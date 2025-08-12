@@ -5,6 +5,10 @@ import keyboard
 import mouse
 
 
+def mouseMove(offset):
+    mouse.move(*offset)
+
+
 class KeyMacro:
     __EVENT_HANDLER = {
         "default": {
@@ -16,7 +20,7 @@ class KeyMacro:
                 "up": mouse.release,
                 "down": mouse.press,
                 "double": mouse.press,
-                "move": mouse.move,
+                "move": mouseMove,
                 "wheel": mouse.wheel
             }
         }
@@ -31,6 +35,10 @@ class KeyMacro:
         return str(self.eventsRecord)
 
     def startRecording(self, isKey: bool = True, isMouse: bool = True, isUntil: str = None):
+        def waiting():
+            keyboard.wait(isUntil)
+            self.stopRecording()
+
         if not self.isRecording:
             self.eventsRecord.clear()
             self.isRecording = True
@@ -40,8 +48,7 @@ class KeyMacro:
             if isMouse:
                 mouse.hook(self.__recordMouseEvent)
             if isUntil is not None:
-                keyboard.wait(isUntil)
-                self.stopRecording()
+                _thread.start_new_thread(waiting, ())
 
     def stopRecording(self):
         if self.isRecording:
@@ -60,29 +67,35 @@ class KeyMacro:
         else:
             self.eventsRecord.append({"mouse": {"delta": event.delta, "type": "wheel", "time": event.time}})
 
-    def playRecord(self, keepInterval: bool = True, isDevice: bool = False):
-        def playing(keepInterval, eventsRecord):
+    def playRecord(self, keepInterval: bool = True, isLoop: bool = False, callback=None):
+        def playing(eventsRecord, keepInterval, isLoop):
             self.isPlaying = True
             try:
-                startTime = 0
-                eventHandler = self.__EVENT_HANDLER['device' if isDevice else 'default']
-                for event in eventsRecord:
-                    if not self.isPlaying:
-                        return
-                    for eventType, eventRecord in event.items():
-                        if keepInterval and startTime:
-                            duration = max(eventRecord['time'] - startTime, 0)
-                            time.sleep(float(duration))
-                        startTime = eventRecord['time']
-                        keyValue = eventRecord['key' if "key" in eventRecord else ('offset' if 'offset' in eventRecord else "delta")]
-                        eventHandler[eventType][eventRecord['type']](keyValue)
+                eventHandler = self.__EVENT_HANDLER['default']
+                while True:
+                    startTime = 0
+                    for event in eventsRecord:
+                        if not self.isPlaying:
+                            isLoop = False
+                            break
+                        for eventType, eventRecord in event.items():
+                            if keepInterval and startTime:
+                                duration = max(eventRecord['time'] - startTime, 0)
+                                time.sleep(float(duration))
+                            startTime = eventRecord['time']
+                            keyValue = eventRecord['key' if "key" in eventRecord else ('offset' if 'offset' in eventRecord else "delta")]
+                            eventHandler[eventType][eventRecord['type']](keyValue)
+                    if not isLoop:
+                        break
+                if callback is not None:
+                    callback()
             except Exception as e:
                 print(f"执行宏失败! {e}")
             finally:
                 self.isPlaying = False
 
         if not self.isPlaying and len(self.eventsRecord) > 0:
-            _thread.start_new_thread(playing, (keepInterval, self.eventsRecord))
+            _thread.start_new_thread(playing, (self.eventsRecord, keepInterval, isLoop))
 
     def terminateRecord(self):
         self.isPlaying = False

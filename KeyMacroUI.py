@@ -1,12 +1,12 @@
+import keyboard
 import ujson
 
 from enum import Enum
 from pathlib import Path
 
-from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, QSize, QEvent
-from PyQt5.QtGui import QPainter
+from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, QSize
 from PyQt5.QtWidgets import QApplication, QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QGraphicsOpacityEffect
-from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TextWrap
+from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TextWrap, TransparentToggleToolButton, CheckBox, LineEdit
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
 from qfluentwidgets.components.widgets.info_bar import InfoIconWidget
 
@@ -24,6 +24,7 @@ class KeyMacroUI(FramelessWindow):
 
     def __initUI(self):
         self.setContentsMargins(0, 35, 0, 10)
+        self.setFocusPolicy(Qt.StrongFocus)
         self.setTitleBar(MSFluentTitleBar(self))
         self.setWindowTitle("按按又键键(￣▽￣)")
         self.setWindowIcon(Icon(FluentIcon.FINGERPRINT))
@@ -40,14 +41,14 @@ class KeyMacroUI(FramelessWindow):
     def __loadKeyMacrosUI(self):
         contents = QVBoxLayout()
         for name, keyMacro in self.keyMacros:
-            macroInfoBar = KeyMacroInfoBar(FluentIcon.QUICK_NOTE, "Script", name, parent=self)
+            macroInfoBar = KeyMacroInfoBar(FluentIcon.QUICK_NOTE, "Script", name, keyMacro, parent=self)
             macroInfoBar.setProperty("id", name)
             macroInfoBar.closedSignal.connect(self.__delKeyMacro)
 
             contents.addWidget(macroInfoBar)
             contents.addSpacing(10)
 
-        newInfoBar = KeyMacroInfoBar(FluentIcon.ADD_TO, "New", "新建脚本", isClosable=False, parent=self)
+        newInfoBar = KeyMacroInfoBar(FluentIcon.ADD_TO, "New", "新建脚本", KeyMacro(), isClosable=False, parent=self)
         contents.addWidget(newInfoBar)
         return contents
 
@@ -71,21 +72,30 @@ class KeyMacroUI(FramelessWindow):
 
 class KeyMacroInfoBar(QFrame):
     closedSignal = pyqtSignal(str)
+    stoppedSignal = pyqtSignal()
+    recordedSignal = pyqtSignal()
 
-    def __init__(self, icon, title: str, content: str, orient=Qt.Horizontal, isClosable=True, parent=None):
+    def __init__(self, icon, title: str, content: str, keyMacro: KeyMacro, orient=Qt.Horizontal, isClosable=True, parent=None):
         super().__init__(parent=parent)
         self.icon = icon
         self.title = title
         self.content = content
+        self.keyMacro = keyMacro
         self.orient = orient
         self.isClosable = isClosable
 
-        self.__initWidget()
+        self.__initUI()
 
-    def __initWidget(self):
-        self.titleLabel = QLabel(self)
-        self.contentLabel = QLabel(self)
-        self.closeButton = TransparentToolButton(FluentIcon.CLOSE, self)
+    def __initUI(self):
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFixedHeight(75)
+        self.stoppedSignal.connect(self.__stopped)
+
+        self.titleLabel = QLabel(self.title)
+        self.contentLabel = LabelEdit()
+        self.contentLabel.setText(self.content)
+        self.contentLabel.textChanged.connect(self.__setContent)
+        self.closeButton = TransparentToolButton(FluentIcon.CLOSE)
         self.iconWidget = InfoIconWidget(self.icon)
 
         self.hBoxLayout = QHBoxLayout(self)
@@ -95,44 +105,54 @@ class KeyMacroInfoBar(QFrame):
         self.opacityEffect = QGraphicsOpacityEffect(self)
         self.opacityAni = QPropertyAnimation(self.opacityEffect, b'opacity', self)
 
-        self.lightBackgroundColor = None
-
-        self.setFixedHeight(50)
         self.opacityEffect.setOpacity(1)
         self.setGraphicsEffect(self.opacityEffect)
+
+        self.recordButton = TransparentToggleToolButton(FluentIcon.PLAY)
+        self.recordButton.clicked.connect(self.__recording)
+
+        self.playButton = TransparentToggleToolButton(FluentIcon.PLAY_SOLID)
+        self.playButton.clicked.connect(self.__playing)
+        if len(self.keyMacro.eventsRecord) <= 0:
+            self.playButton.setEnabled(False)
+
+        self.isKeyCheckBox = CheckBox("键盘")
+        self.isKeyCheckBox.setChecked(True)
+
+        self.isMouseCheckBox = CheckBox("鼠标")
+        self.isMouseCheckBox.setChecked(True)
+
+        self.isLoopCheckBox = CheckBox("循环")
 
         self.closeButton.setFixedSize(36, 36)
         self.closeButton.setIconSize(QSize(12, 12))
         self.closeButton.setCursor(Qt.PointingHandCursor)
         self.closeButton.setVisible(self.isClosable)
+        self.closeButton.clicked.connect(self.__fadeOut)
 
         self.__setQss()
         self.__initLayout()
 
-        self.closeButton.clicked.connect(self.__fadeOut)
-
     def __initLayout(self):
         self.hBoxLayout.setContentsMargins(6, 6, 6, 6)
-        self.hBoxLayout.setSizeConstraint(QVBoxLayout.SetMinimumSize)
-        self.textLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
-        self.textLayout.setAlignment(Qt.AlignTop)
+        self.textLayout.setAlignment(Qt.AlignVCenter)
         self.textLayout.setContentsMargins(1, 8, 0, 8)
 
         self.hBoxLayout.setSpacing(0)
         self.textLayout.setSpacing(5)
 
         # add icon to layout
-        self.hBoxLayout.addWidget(self.iconWidget, 0, Qt.AlignTop | Qt.AlignLeft)
+        self.hBoxLayout.addWidget(self.iconWidget, 0, Qt.AlignVCenter | Qt.AlignLeft)
 
         # add title to layout
-        self.textLayout.addWidget(self.titleLabel, 1, Qt.AlignTop)
+        self.textLayout.addWidget(self.titleLabel, 0, Qt.AlignVCenter | Qt.AlignLeft)
         self.titleLabel.setVisible(bool(self.title))
 
         # add content label to layout
         if self.orient == Qt.Horizontal:
             self.textLayout.addSpacing(7)
 
-        self.textLayout.addWidget(self.contentLabel, 1, Qt.AlignTop)
+        self.textLayout.addWidget(self.contentLabel, 0, Qt.AlignVCenter | Qt.AlignLeft)
         self.contentLabel.setVisible(bool(self.content))
         self.hBoxLayout.addLayout(self.textLayout)
 
@@ -143,11 +163,18 @@ class KeyMacroInfoBar(QFrame):
         else:
             self.textLayout.addLayout(self.widgetLayout)
 
+        self.widgetLayout.addStretch(1)
+        self.addWidget(self.isKeyCheckBox)
+        self.addWidget(self.isMouseCheckBox)
+        self.addWidget(self.recordButton)
+        self.addWidget(SplitLineWidget())
+
+        self.addWidget(self.isLoopCheckBox)
+        self.addWidget(self.playButton)
+
         # add close button to layout
         self.hBoxLayout.addSpacing(12)
-        self.hBoxLayout.addWidget(self.closeButton, 0, Qt.AlignTop | Qt.AlignLeft)
-
-        self._adjustText()
+        self.hBoxLayout.addWidget(self.closeButton, 0, Qt.AlignVCenter | Qt.AlignLeft)
 
     def __setQss(self):
         self.titleLabel.setObjectName('titleLabel')
@@ -155,25 +182,31 @@ class KeyMacroInfoBar(QFrame):
         if isinstance(self.icon, Enum):
             self.setProperty('type', self.icon.value)
         self.setStyleSheet("""
-        KeyMacroInfoBar {
-            border: 1px solid rgb(229, 229, 229);
-            border-radius: 6px;
-            background-color: rgb(244, 244, 244);
-        }
+            KeyMacroInfoBar {
+                border: 1px solid rgb(229, 229, 229);
+                border-radius: 6px;
+                background-color: rgb(246, 246, 246);
+            }
 
-        #titleLabel {
-            font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
-            font-weight: bold;
-            color: black;
-            background-color: transparent;
-        }
+            KeyMacroInfoBar:focus {
+                border: 1px solid rgb(219, 219, 219);
+                border-radius: 6px;
+                background-color: rgb(250, 250, 250);
+            }
 
-        #contentLabel {
-            font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
-            color: black;
-            background-color: transparent;
-        }
-        """)
+            #titleLabel {
+                font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+                font-weight: bold;
+                color: black;
+                background-color: transparent;
+            }
+
+            #contentLabel {
+                font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+                color: black;
+                background-color: transparent;
+            }
+            """)
 
     def __fadeOut(self):
         """ fade out """
@@ -183,30 +216,47 @@ class KeyMacroInfoBar(QFrame):
         self.opacityAni.finished.connect(self.close)
         self.opacityAni.start()
 
-    def _adjustText(self):
-        w = 900 if not self.parent() else (self.parent().width() - 50)
+    def __setContent(self, text: str):
+        self.content = text
 
-        # adjust title
-        chars = max(min(w / 10, 120), 30)
-        self.titleLabel.setText(TextWrap.wrap(self.title, chars, False)[0])
+    def __recording(self, event):
+        if event:
+            self.playButton.setEnabled(False)
+            self.recordButton.setIcon(FluentIcon.PAUSE)
+            self.keyMacro.startRecording(isKey=self.isKeyCheckBox.isChecked(), isMouse=self.isMouseCheckBox.isChecked())
+        else:
+            self.playButton.setEnabled(True)
+            self.recordButton.setIcon(FluentIcon.PLAY)
+            self.keyMacro.stopRecording()
 
-        # adjust content
-        chars = max(min(w / 9, 120), 30)
-        self.contentLabel.setText(TextWrap.wrap(self.content, chars, False)[0])
-        self.adjustSize()
+    def __recorded(self):
+        self.__recording(False)
+        self.recordButton.setChecked(False)
+        self.recordedSignal.emit()
+
+    def __playing(self, event):
+        def callback():
+            self.stoppedSignal.emit()
+
+        if event:
+            self.recordButton.setEnabled(False)
+            self.playButton.setIcon(FluentIcon.PAUSE_BOLD)
+            self.keyMacro.playRecord(isLoop=self.isLoopCheckBox.isChecked(), callback=callback)
+        else:
+            self.recordButton.setEnabled(True)
+            self.playButton.setIcon(FluentIcon.PLAY_SOLID)
+            self.keyMacro.terminateRecord()
+
+    def __stopped(self):
+        self.playButton.setChecked(False)
+        self.playButton.setIcon(FluentIcon.PLAY_SOLID)
+        self.recordButton.setEnabled(True)
 
     def addWidget(self, widget: QWidget, stretch=0):
         """ add widget to info bar """
-        self.widgetLayout.addSpacing(6)
+        self.widgetLayout.addSpacing(10)
         align = Qt.AlignTop if self.orient == Qt.Vertical else Qt.AlignVCenter
         self.widgetLayout.addWidget(widget, stretch, Qt.AlignLeft | align)
-
-    def eventFilter(self, obj, e: QEvent):
-        if obj is self.parent():
-            if e.type() in [QEvent.Resize, QEvent.WindowStateChange]:
-                self._adjustText()
-
-        return super().eventFilter(obj, e)
 
     def closeEvent(self, e):
         idProperty = self.property("id")
@@ -215,27 +265,32 @@ class KeyMacroInfoBar(QFrame):
         self.deleteLater()
         e.ignore()
 
-    def showEvent(self, e):
-        self._adjustText()
-        super().showEvent(e)
 
-        if self.parent():
-            self.parent().installEventFilter(self)
+class LabelEdit(LineEdit):
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(parent=parent)
+        self.setText(text)
+        self.setReadOnly(True)
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setMinimumWidth(100)
+        self.setMaximumWidth(1000)
 
-    def paintEvent(self, e):
-        super().paintEvent(e)
-        if self.lightBackgroundColor is None:
-            return
+    def mouseDoubleClickEvent(self, event):
+        self.setReadOnly(False)
+        return super().mouseDoubleClickEvent(event)
 
-        painter = QPainter(self)
-        painter.setRenderHints(QPainter.Antialiasing)
-        painter.setPen(Qt.NoPen)
+    def focusOutEvent(self, event):
+        self.setReadOnly(True)
+        return super().focusOutEvent(event)
 
-        painter.setBrush(self.lightBackgroundColor)
 
-        rect = self.rect().adjusted(1, 1, -1, -1)
-        painter.drawRoundedRect(rect, 6, 6)
+class SplitLineWidget(QFrame):
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QFrame.VLine)
+        self.setStyleSheet("QFrame{background:#A0A0A0;min-height:5px;border:0px}")
+        self.setFixedSize(2, 25)
 
 # ------------------------------------------Common------------------------------------------ #
 
