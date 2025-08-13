@@ -26,8 +26,8 @@ class KeyMacro:
         }
     }
 
-    def __init__(self):
-        self.eventsRecord = []
+    def __init__(self, eventsRecord: list = None):
+        self.eventsRecord = [] if eventsRecord is None else eventsRecord
         self.isRecording = False
         self.isPlaying = False
 
