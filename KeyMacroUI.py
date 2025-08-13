@@ -425,6 +425,7 @@ def dumpJson(jsonPath: str | Path, json: dict, mode: str = 'w', encoding: str = 
 
 if __name__ == "__main__":
     import sys
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv)
