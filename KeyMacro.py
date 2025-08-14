@@ -67,7 +67,7 @@ class KeyMacro:
         else:
             self.eventsRecord.append({"mouse": {"delta": event.delta, "type": "wheel", "time": event.time}})
 
-    def playRecord(self, keepInterval: bool = True, isLoop: bool = False, callback=None):
+    def playRecord(self, keepInterval: bool = True, isLoop: bool = False, delay: int = 0, callback=None):
         def playing(eventsRecord, keepInterval, isLoop):
             self.isPlaying = True
             try:
@@ -87,6 +87,8 @@ class KeyMacro:
                             eventHandler[eventType][eventRecord['type']](keyValue)
                     if not isLoop:
                         break
+                    if delay > 0:
+                        time.sleep(delay / 1000)
                 if callback is not None:
                     callback()
             except Exception as e:

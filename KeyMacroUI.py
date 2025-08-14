@@ -1,14 +1,16 @@
 import _thread
 import time
+
 import ujson
 
 from enum import Enum
 from pathlib import Path
 
-from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, QSize
-from PyQt5.QtWidgets import QApplication, QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QGraphicsOpacityEffect, QTableWidgetItem
-from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TransparentToggleToolButton, CheckBox, LineEdit, MessageBox, TableWidget, FlyoutView, \
-    FlyoutAnimationType, Flyout
+from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation
+from PyQt5.QtGui import QPainter, QColor, QPen
+from PyQt5.QtWidgets import QApplication, QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QGraphicsOpacityEffect
+from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TransparentToggleToolButton, CheckBox, LineEdit, MessageBox, FlyoutView, \
+    FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
 from qfluentwidgets.components.widgets.info_bar import InfoIconWidget
 
@@ -27,36 +29,55 @@ class KeyMacroUI(FramelessWindow):
 
     def __initUI(self):
         self.setContentsMargins(0, 35, 0, 10)
-        self.setFocusPolicy(Qt.StrongFocus)
         self.setTitleBar(MSFluentTitleBar(self))
         self.setWindowTitle("按按又键键(￣▽￣)")
         self.setWindowIcon(Icon(FluentIcon.FINGERPRINT))
+        self.resize(700, 250)
         self.setMaximumSize(1920, 1080)
-        self.setMinimumSize(400, 230)
-        self.resize(700, 235)
+        self.setMinimumSize(700, 250)
+        self.setFocusPolicy(Qt.StrongFocus)
 
         self.keyMacrosUI = self.__loadKeyMacrosUI()
+        keyMacrosBg = BackgroundWidget()
+        keyMacrosBg.setLayout(self.keyMacrosUI)
+
+        keyMacrosArea = ScrollArea()
+        keyMacrosArea.setWidgetResizable(True)
+        keyMacrosArea.setWidget(keyMacrosBg)
+        keyMacrosArea.setObjectName("keyMacrosArea")
+        keyMacrosArea.setStyleSheet("""#keyMacrosArea{border: 0px ;}""")
 
         mainLayout = QVBoxLayout()
-        mainLayout.addLayout(self.keyMacrosUI)
+        mainLayout.addWidget(keyMacrosArea)
         self.setLayout(mainLayout)
+
+    def __newKeyMacroInfoBar(self):
+        macroConfig = {
+            "id": str(time.time_ns()),
+            'title': "New",
+            "name": "新建脚本"
+        }
+        keyMacroInfoBar = KeyMacroInfoBar(FluentIcon.ADD_TO, macroConfig)
+        keyMacroInfoBar.closedSignal.connect(self.__delKeyMacro)
+        keyMacroInfoBar.recordedSignal.connect(self.__updateKeyMacro)
+        self.keyMacroWidgets[keyMacroInfoBar.id] = keyMacroInfoBar
+        return keyMacroInfoBar
 
     def __loadKeyMacrosUI(self):
         keyMacroLayout = QVBoxLayout()
         keyMacroLayout.setSpacing(10)
         for macroID, keyMacro in self.keyMacros.items():
-            macroInfoBar = KeyMacroInfoBar(FluentIcon.QUICK_NOTE, keyMacro, parent=self)
+            macroInfoBar = KeyMacroInfoBar(FluentIcon.QUICK_NOTE, keyMacro)
             macroInfoBar.closedSignal.connect(self.__delKeyMacro)
             macroInfoBar.recordedSignal.connect(self.__updateKeyMacro)
 
             keyMacroLayout.addWidget(macroInfoBar)
             self.keyMacroWidgets[macroID] = macroInfoBar
 
-        newInfoBar = KeyMacroInfoBar(FluentIcon.ADD_TO, {'title': "New", "name": "新建脚本"}, False, self)
-        newInfoBar.closedSignal.connect(self.__delKeyMacro)
-        newInfoBar.recordedSignal.connect(self.__updateKeyMacro)
+        newInfoBar = self.__newKeyMacroInfoBar()
         keyMacroLayout.addWidget(newInfoBar)
-        self.keyMacroWidgets[newInfoBar.id] = newInfoBar
+        if len(self.keyMacros) > 2:
+            self.resize(self.width(), min(len(self.keyMacros) * 75, 500))
         return keyMacroLayout
 
     def __updateKeyMacro(self, macroID: str):
@@ -64,18 +85,14 @@ class KeyMacroUI(FramelessWindow):
             keyMacroInfoBar = self.keyMacroWidgets[macroID]
             self.keyMacros[macroID] = keyMacroInfoBar.macroConfig
 
-            newInfoBar = KeyMacroInfoBar(FluentIcon.ADD_TO, {'title': "New", "name": "新建脚本"}, False, self)
-            newInfoBar.closedSignal.connect(self.__delKeyMacro)
-            newInfoBar.recordedSignal.connect(self.__updateKeyMacro)
+            newInfoBar = self.__newKeyMacroInfoBar()
+            if self.height() < 500:
+                self.resize(self.width(), self.height() + 75)
             self.keyMacrosUI.addWidget(newInfoBar)
-            self.keyMacroWidgets[newInfoBar.id] = newInfoBar
-
-        self.saveKeyMacros()
 
     def __delKeyMacro(self, macroID: str):
         if macroID in self.keyMacros:
             self.keyMacros.pop(macroID)
-            self.saveKeyMacros()
 
     def loadKeyMacros(self):
         if self.macrosPath.exists():
@@ -93,30 +110,26 @@ class KeyMacroInfoBar(QFrame):
     playedSignal = pyqtSignal(str)
     recordedSignal = pyqtSignal(str)
 
-    def __init__(self, icon, macroConfig: dict,  isClosable=True, parent=None):
+    def __init__(self, icon, macroConfig: dict, parent=None):
         super().__init__(parent=parent)
         self.icon = icon
-        self.isClosable = isClosable
 
         self.macroConfig = macroConfig
-        if "id" not in macroConfig:
-            macroConfig['id'] = str(time.time_ns())
-        self.id = macroConfig['id']
+        self.id = macroConfig.get("id")
         self.keyMacro = KeyMacro(macroConfig.get("record"))
 
         self.__initUI()
 
     def __initUI(self):
-        self.setFocusPolicy(Qt.StrongFocus)
-        self.setFixedHeight(75)
         self.playedSignal.connect(self.__played)
         self.recordedSignal.connect(self.__recorded)
+        self.setFixedHeight(75)
+        self.setFocusPolicy(Qt.StrongFocus)
 
         self.titleLabel = QLabel(self.macroConfig.get('title', ""))
         self.contentLabel = LabelEdit()
         self.contentLabel.setText(self.macroConfig.get('name', ""))
         self.contentLabel.textEdited.connect(self.__setName)
-        self.closeButton = TransparentToolButton(FluentIcon.CLOSE)
         self.iconWidget = InfoIconWidget(self.icon)
 
         self.hBoxLayout = QHBoxLayout(self)
@@ -133,11 +146,6 @@ class KeyMacroInfoBar(QFrame):
 
         self.playButton = TransparentToggleToolButton(FluentIcon.PLAY_SOLID)
         self.playButton.clicked.connect(self.__playing)
-        if len(self.keyMacro.eventsRecord) <= 0:
-            self.playButton.setEnabled(False)
-
-        self.editButton = TransparentToolButton(FluentIcon.EDIT)
-        self.editButton.clicked.connect(self.__editing)
 
         self.isKeyCheckBox = CheckBox("键盘")
         self.isKeyCheckBox.setChecked(True)
@@ -147,11 +155,23 @@ class KeyMacroInfoBar(QFrame):
 
         self.isLoopCheckBox = CheckBox("循环")
 
-        self.closeButton.setFixedSize(36, 36)
-        self.closeButton.setIconSize(QSize(12, 12))
-        self.closeButton.setCursor(Qt.PointingHandCursor)
-        self.closeButton.setEnabled(self.isClosable)
-        self.closeButton.clicked.connect(self.__fadeOut)
+        self.editButton = TransparentToolButton(FluentIcon.EDIT)
+        self.editButton.clicked.connect(self.__editing)
+
+        self.settingButton = TransparentToolButton(FluentIcon.SETTING)
+        self.settingButton.clicked.connect(self.__setting)
+
+        self.editingView = EditScriptView('编辑')
+        self.editingView.submitSignal.connect(self.__setRecord)
+
+        self.settingView = SettingsView("设置")
+        self.settingView.setDelayValue(self.macroConfig.get("delay", 0))
+        self.settingView.removeSignal.connect(self.__fadeOut)
+        self.settingView.delayChangedSignal.connect(self.__setDelay)
+
+        if len(self.keyMacro.eventsRecord) <= 0:
+            self.playButton.setEnabled(False)
+            self.settingButton.setEnabled(False)
 
         self.__setQss()
         self.__initLayout()
@@ -167,15 +187,17 @@ class KeyMacroInfoBar(QFrame):
         # add icon to layout
         self.hBoxLayout.addWidget(self.iconWidget, 0, Qt.AlignVCenter | Qt.AlignLeft)
 
-        # add title to layout
+        # # add title to layout
         self.textLayout.addWidget(self.titleLabel, 0, Qt.AlignVCenter | Qt.AlignLeft)
         self.textLayout.addSpacing(7)
-        self.titleLabel.setVisible(bool(self.macroConfig.get('title')))
+        if not self.macroConfig.get('title'):
+            self.titleLabel.setVisible(False)
 
         self.textLayout.addWidget(self.contentLabel, 0, Qt.AlignVCenter | Qt.AlignLeft)
-        self.contentLabel.setVisible(bool(self.macroConfig.get('name')))
-        self.hBoxLayout.addLayout(self.textLayout)
+        if not self.macroConfig.get('name'):
+            self.contentLabel.setVisible(False)
 
+        self.hBoxLayout.addLayout(self.textLayout)
         self.hBoxLayout.addLayout(self.widgetLayout)
 
         self.widgetLayout.addStretch(1)
@@ -190,7 +212,7 @@ class KeyMacroInfoBar(QFrame):
 
         # add close button to layout
         self.hBoxLayout.addSpacing(12)
-        self.hBoxLayout.addWidget(self.closeButton, 0, Qt.AlignVCenter | Qt.AlignLeft)
+        self.hBoxLayout.addWidget(self.settingButton, 0, Qt.AlignVCenter | Qt.AlignLeft)
 
     def __setQss(self):
         self.titleLabel.setObjectName('titleLabel')
@@ -236,6 +258,12 @@ class KeyMacroInfoBar(QFrame):
     def __setName(self, text: str):
         self.macroConfig['name'] = text
 
+    def __setDelay(self, delay: int):
+        self.macroConfig['delay'] = delay
+
+    def __setRecord(self, text: str):
+        pass
+
     def __recording(self, event):
         def record():
             self.recordedSignal.emit(self.id)
@@ -266,7 +294,7 @@ class KeyMacroInfoBar(QFrame):
             self.titleLabel.setText("Script")
             self.icon = FluentIcon.QUICK_NOTE
             self.iconWidget.icon = self.icon
-            self.closeButton.setEnabled(True)
+            self.settingButton.setEnabled(True)
 
     def __playing(self, event):
         def callback():
@@ -276,9 +304,11 @@ class KeyMacroInfoBar(QFrame):
             print("playing...")
             self.recordButton.setEnabled(False)
             self.playButton.setIcon(FluentIcon.PAUSE_BOLD)
+            self.isLoopCheckBox.setEnabled(False)
+            self.editButton.setEnabled(False)
             if not self.playButton.isChecked():
                 self.playButton.setChecked(True)
-            self.keyMacro.playRecord(isLoop=self.isLoopCheckBox.isChecked(), callback=callback)
+            self.keyMacro.playRecord(True, self.isLoopCheckBox.isChecked(), self.macroConfig.get('delay'), callback)
         else:
             print('stop playing.')
             self.keyMacro.terminateRecord()
@@ -286,34 +316,35 @@ class KeyMacroInfoBar(QFrame):
             self.playButton.setIcon(FluentIcon.PLAY_SOLID)
             if self.playButton.isChecked():
                 self.playButton.setChecked(False)
+            self.isLoopCheckBox.setEnabled(True)
+            self.editButton.setEnabled(True)
 
     def __played(self, _id):
         self.playButton.setChecked(False)
         self.playButton.setIcon(FluentIcon.PLAY_SOLID)
         self.recordButton.setEnabled(True)
+        self.isLoopCheckBox.setEnabled(True)
+        self.editButton.setEnabled(True)
 
     def __editing(self, event):
-        view = FlyoutView(self.tr('编辑'), "")
-
-        tableFrame = TableFrame()
-        tableFrame.setMinimumSize(370, 250)
-        sheet = []
+        contents = ""
         lastTime = next(iter(self.keyMacro.eventsRecord[0].values()))['time'] if len(self.keyMacro.eventsRecord) > 0 else 0
         for record in self.keyMacro.eventsRecord:
-            row = []
+            line = ""
             for values in record.values():
                 for k, v in values.items():
                     if k == "time":
-                        row.append(format(v - lastTime, '.9f'))
+                        line += f"{int((v - lastTime) * 1000):04d}"
                         lastTime = v
                     else:
-                        row.append(v)
-            sheet.append(row)
+                        line += f"{str(v).strip()}, "
+            contents += f"{line}\n"
 
-        tableFrame.setSheet(sheet, ("键位", "动作", "时长(秒)"))
-        view.addWidget(tableFrame, align=Qt.AlignCenter)
+        self.editingView.setEditText(contents)
+        Flyout.make(self.editingView, self.editButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
 
-        Flyout.make(view, self.editButton, self.window(), FlyoutAnimationType.DROP_DOWN)
+    def __setting(self, event):
+        Flyout.make(self.settingView, self.settingButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
 
     def addWidget(self, widget: QWidget, stretch=0):
         self.widgetLayout.addSpacing(15)
@@ -327,6 +358,64 @@ class KeyMacroInfoBar(QFrame):
         self.closedSignal.emit(self.id)
         self.deleteLater()
         e.ignore()
+
+
+class EditScriptView(FlyoutView):
+    submitSignal = pyqtSignal(str)
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(title, "", parent=parent)
+        self.__initUI()
+
+    def __initUI(self):
+        self.editText = TextEdit()
+        self.editText.setMinimumSize(250, 200)
+
+        self.submitButton = PushButton(FluentIcon.SAVE, "保存")
+        self.submitButton.clicked.connect(self.__submit)
+
+        self.addWidget(self.editText)
+        self.addWidget(self.submitButton, Qt.AlignRight)
+
+    def __submit(self, event):
+        self.submitSignal.emit(self.editText.toPlainText())
+
+    def setEditText(self, text: str):
+        self.editText.setText(text)
+
+
+class SettingsView(FlyoutView):
+    removeSignal = pyqtSignal()
+    delayChangedSignal = pyqtSignal(int)
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(title, "", parent=parent)
+        self.__initUI()
+
+    def __initUI(self):
+        self.removeButton = PushButton(FluentIcon.DELETE, "删除脚本")
+        self.removeButton.setCursor(Qt.PointingHandCursor)
+        self.removeButton.clicked.connect(self.removeSignal)
+
+        self.delayEdit = SpinBox()
+        self.delayEdit.setMinimum(0)
+        self.delayEdit.setMaximum(2147483647)
+        self.delayEdit.setSingleStep(1000)
+        self.delayEdit.valueChanged.connect(self.delayChangedSignal)
+        self.delayLabel = QLabel("循环间隔/ms")
+        self.delayLabel.setStyleSheet("font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';")
+
+        self.addWidget(self.removeButton)
+
+        self.widgetLayout.addSpacing(5)
+        self.addWidget(self.delayLabel)
+        self.addWidget(self.delayEdit)
+
+    def getDelayValue(self):
+        return self.delayEdit.value()
+
+    def setDelayValue(self, value):
+        self.delayEdit.setValue(value)
 
 
 class LabelEdit(LineEdit):
@@ -347,36 +436,21 @@ class LabelEdit(LineEdit):
         return super().focusOutEvent(event)
 
 
-class TableFrame(TableWidget):
-
+class BackgroundWidget(QFrame):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.__initUI()
+        super().__init__(parent=parent)
 
-    def __initUI(self):
-        self.setBorderRadius(8)
-        self.setBorderVisible(True)
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setPen(QPen(QColor(200, 200, 200), 0.5, Qt.DotLine))
 
-    def setSheet(self, sheet: list | tuple, horHeader: list | tuple = None, verHeader: list | tuple = None):
-        self.clear()
-        row = len(sheet)
-        column = len(sheet[0]) if row > 0 else 0
-        self.setColumnCount(column)
-        self.setRowCount(row)
+        # 绘制水平网格线
+        for y in range(0, self.height(), 10):  # 20为网格间距
+            painter.drawLine(0, y, self.width(), y)
 
-        if horHeader is None:
-            self.horizontalHeader().hide()
-        else:
-            self.setHorizontalHeaderLabels(horHeader)
-        if verHeader is None:
-            self.verticalHeader().hide()
-        else:
-            self.setVerticalHeaderLabels(verHeader)
-
-        for i, items in enumerate(sheet):
-            for j, item in enumerate(items):
-                self.setItem(i, j, QTableWidgetItem(str(item)))
-        self.resizeColumnsToContents()
+        # 绘制垂直网格线
+        for x in range(0, self.width(), 10):
+            painter.drawLine(x, 0, x, self.height())
 
 
 class SplitLineWidget(QFrame):
@@ -384,6 +458,7 @@ class SplitLineWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.VLine)
+        self.setFrameShadow(QFrame.Sunken)
         self.setStyleSheet("QFrame{background:#A0A0A0;min-height:5px;border:0px}")
         self.setFixedSize(2, 25)
 
@@ -394,9 +469,11 @@ def showMessageDialog(title: str, content: str, parent: QWidget):
     if parent.window():
         title = parent.tr(title)
         content = parent.tr(content)
-        w = MessageBox(title, content, parent.window())
+        msgBox = MessageBox(title, content, parent.window())
+        msgBox.yesButton.setText("确定")
+        msgBox.cancelButton.setText("取消")
         # w.setContentCopyable(True)
-        if w.exec():
+        if msgBox.exec():
             return True
     return False
 
@@ -430,6 +507,5 @@ if __name__ == "__main__":
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv)
     window = KeyMacroUI()
-    moveCenter(window)
     window.show()
     sys.exit(app.exec_())
