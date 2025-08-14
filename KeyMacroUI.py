@@ -375,7 +375,7 @@ class EditScriptView(FlyoutView):
         self.submitButton.clicked.connect(self.__submit)
 
         self.addWidget(self.editText)
-        self.addWidget(self.submitButton, Qt.AlignRight)
+        self.addWidget(self.submitButton, align=Qt.AlignRight)
 
     def __submit(self, event):
         self.submitSignal.emit(self.editText.toPlainText())
@@ -426,6 +426,7 @@ class LabelEdit(LineEdit):
         self.setContentsMargins(0, 0, 0, 0)
         self.setMinimumWidth(100)
         self.setMaximumWidth(1000)
+        self.returnPressed.connect(self.enterPressEvent)
 
     def mouseDoubleClickEvent(self, event):
         self.setReadOnly(False)
@@ -434,6 +435,9 @@ class LabelEdit(LineEdit):
     def focusOutEvent(self, event):
         self.setReadOnly(True)
         return super().focusOutEvent(event)
+
+    def enterPressEvent(self):
+        self.setReadOnly(True)
 
 
 class BackgroundWidget(QFrame):
