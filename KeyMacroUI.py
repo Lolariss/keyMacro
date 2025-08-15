@@ -291,11 +291,11 @@ class KeyMacroInfoBar(QFrame):
                 for row, line in enumerate(contents.splitlines()):
                     if len(line.strip()) == 0:
                         continue
-                    if ',' in line:
-                        lineSplit = line.split(",")
+                    if ':' in line:
+                        lineSplit = line.split(":")
                         recordKey, recordType = lineSplit[0].strip(), lineSplit[1].strip()
                         if recordType == "move":
-                            keyMacro.addMouseRecord(tuple(recordKey), recordType, delay)
+                            keyMacro.addMouseRecord(ujson.loads(recordKey), recordType, delay)
                         elif recordType == "wheel":
                             keyMacro.addMouseRecord(float(recordKey), recordType, delay)
                         elif recordKey in {"mouse left", "mouse right", "mouse middle"}:
@@ -378,7 +378,7 @@ class KeyMacroInfoBar(QFrame):
                     if eventType == "mouse" and (recordKey == "left" or recordKey == "right" or recordKey == "middle"):
                         recordKey = f"mouse {recordKey}"
 
-                    contents += f"{int((recordTime - lastTime) * 1000):04d}\n{recordKey}, {recordType}\n"
+                    contents += f"{int((recordTime - lastTime) * 1000):04d}\n{recordKey}: {recordType}\n"
                     lastTime = recordTime
         except Exception as e:
             InfoBar.error("", f"脚本文本化失败!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())

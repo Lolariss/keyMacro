@@ -65,7 +65,7 @@ class KeyMacro:
         if isinstance(event, mouse.ButtonEvent):
             self.eventsRecord.append({"mouse": {"key": event.button, "type": event.event_type, "time": event.time}})
         elif isinstance(event, mouse.MoveEvent):
-            self.eventsRecord.append({"mouse": {"offset": (event.x, event.y), "type": "move", "time": event.time}})
+            self.eventsRecord.append({"mouse": {"offset": [event.x, event.y], "type": "move", "time": event.time}})
         else:
             self.eventsRecord.append({"mouse": {"delta": event.delta, "type": "wheel", "time": event.time}})
 
@@ -112,11 +112,11 @@ class KeyMacro:
     def addMouseRecord(self, key, event, msec):
         baseTime = 0 if len(self.eventsRecord) == 0 else next(iter(self.eventsRecord[-1].values()))['time']
         time = msec / 1000
-        if key in {'left', 'right', 'middle'}:
-            self.eventsRecord.append({"mouse": {"key": key, "type": event, "time": baseTime + time}})
-        elif event == 'move':
+        if event == 'move':
             self.eventsRecord.append({"mouse": {"offset": key, "type": "move", "time": baseTime + time}})
         elif event == 'wheel':
             self.eventsRecord.append({"mouse": {"delta": key, "type": "wheel", "time": baseTime + time}})
+        elif key in {'left', 'right', 'middle'}:
+            self.eventsRecord.append({"mouse": {"key": key, "type": event, "time": baseTime + time}})
         else:
             raise Exception('error mouse record!')
