@@ -57,9 +57,11 @@ class KeyMacro:
             mouse.unhook_all()
 
     def __recordKeyEvent(self, event):
+        # print("recording keyboard...")
         self.eventsRecord.append({"key": {"key": event.name, "type": event.event_type, "time": event.time}})
 
     def __recordMouseEvent(self, event):
+        # print("recording mouse...")
         if isinstance(event, mouse.ButtonEvent):
             self.eventsRecord.append({"mouse": {"key": event.button, "type": event.event_type, "time": event.time}})
         elif isinstance(event, mouse.MoveEvent):
@@ -73,16 +75,16 @@ class KeyMacro:
             try:
                 eventHandler = self.__EVENT_HANDLER['default']
                 while True:
-                    startTime = 0
+                    keyTime = next(iter(eventsRecord[0].values()))['time']
                     for event in eventsRecord:
                         if not self.isPlaying:
                             isLoop = False
                             break
                         for eventType, eventRecord in event.items():
-                            if keepInterval and startTime:
-                                duration = max(eventRecord['time'] - startTime, 0)
+                            duration = max(eventRecord['time'] - keyTime, 0)
+                            if keepInterval and duration > 0:
                                 time.sleep(float(duration))
-                            startTime = eventRecord['time']
+                            keyTime = eventRecord['time']
                             keyValue = eventRecord['key' if "key" in eventRecord else ('offset' if 'offset' in eventRecord else "delta")]
                             eventHandler[eventType][eventRecord['type']](keyValue)
                     if not isLoop:

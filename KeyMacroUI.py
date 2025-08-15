@@ -1,20 +1,20 @@
-import _thread
 import time
 
+import keyboard
 import ujson
+import _thread
 
 from enum import Enum
 from pathlib import Path
+from KeyMacro import KeyMacro
 
-from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation
+from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, pyqtSlot
 from PyQt5.QtGui import QPainter, QColor, QPen
 from PyQt5.QtWidgets import QApplication, QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QGraphicsOpacityEffect
 from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TransparentToggleToolButton, CheckBox, LineEdit, MessageBox, FlyoutView, \
-    FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit
+    FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
-from qfluentwidgets.components.widgets.info_bar import InfoIconWidget
-
-from KeyMacro import KeyMacro
+from qfluentwidgets.components.widgets.info_bar import InfoIconWidget, InfoBar, InfoBarPosition
 
 
 class KeyMacroUI(FramelessWindow):
@@ -25,7 +25,13 @@ class KeyMacroUI(FramelessWindow):
         self.keyMacroWidgets: dict = {}
         self.macrosPath = Path.cwd() / "keyMacros.json"
         self.loadKeyMacros()
+
+        self.currentInfoBar = None
+        self.currentNewInfoBar = None
         self.__initUI()
+
+        keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord)
+        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay, suppress=True)
 
     def __initUI(self):
         self.setContentsMargins(0, 35, 0, 10)
@@ -58,9 +64,11 @@ class KeyMacroUI(FramelessWindow):
             "name": "新建脚本"
         }
         keyMacroInfoBar = KeyMacroInfoBar(FluentIcon.ADD_TO, macroConfig)
-        keyMacroInfoBar.closedSignal.connect(self.__delKeyMacro)
+        keyMacroInfoBar.deletedSignal.connect(self.__deleteKeyMacro)
         keyMacroInfoBar.recordedSignal.connect(self.__updateKeyMacro)
+        keyMacroInfoBar.clickedSignal.connect(self.__clickKeyMacro)
         self.keyMacroWidgets[keyMacroInfoBar.id] = keyMacroInfoBar
+        self.currentNewInfoBar = keyMacroInfoBar
         return keyMacroInfoBar
 
     def __loadKeyMacrosUI(self):
@@ -68,31 +76,48 @@ class KeyMacroUI(FramelessWindow):
         keyMacroLayout.setSpacing(10)
         for macroID, keyMacro in self.keyMacros.items():
             macroInfoBar = KeyMacroInfoBar(FluentIcon.QUICK_NOTE, keyMacro)
-            macroInfoBar.closedSignal.connect(self.__delKeyMacro)
+            macroInfoBar.deletedSignal.connect(self.__deleteKeyMacro)
             macroInfoBar.recordedSignal.connect(self.__updateKeyMacro)
-
+            macroInfoBar.clickedSignal.connect(self.__clickKeyMacro)
             keyMacroLayout.addWidget(macroInfoBar)
             self.keyMacroWidgets[macroID] = macroInfoBar
 
         newInfoBar = self.__newKeyMacroInfoBar()
         keyMacroLayout.addWidget(newInfoBar)
         if len(self.keyMacros) > 2:
-            self.resize(self.width(), min(len(self.keyMacros) * 75, 500))
+            self.resize(self.width(), min(len(self.keyMacros) * 100, 500))
         return keyMacroLayout
 
     def __updateKeyMacro(self, macroID: str):
         if macroID not in self.keyMacros:
             keyMacroInfoBar = self.keyMacroWidgets[macroID]
+            if len(keyMacroInfoBar.keyMacro.eventsRecord) <= 0:
+                return
             self.keyMacros[macroID] = keyMacroInfoBar.macroConfig
 
             newInfoBar = self.__newKeyMacroInfoBar()
             if self.height() < 500:
                 self.resize(self.width(), self.height() + 75)
+            newInfoBar.setOpacity(0)
             self.keyMacrosUI.addWidget(newInfoBar)
+            newInfoBar.fadeIn()
+            self.update()
 
-    def __delKeyMacro(self, macroID: str):
+    def __deleteKeyMacro(self, macroID: str):
         if macroID in self.keyMacros:
             self.keyMacros.pop(macroID)
+
+    def __clickKeyMacro(self, macroID: str):
+        if macroID in self.keyMacros:
+            self.currentInfoBar = self.keyMacroWidgets.get(macroID)
+
+    def __shortCutPlay(self):
+        if self.currentInfoBar is not None:
+            self.currentInfoBar.playing(not self.currentInfoBar.playButton.isChecked())
+
+    def __shortCutRecord(self):
+        if self.currentNewInfoBar is not None:
+            self.currentNewInfoBar.recording(not self.currentNewInfoBar.recordButton.isChecked())
 
     def loadKeyMacros(self):
         if self.macrosPath.exists():
@@ -103,20 +128,23 @@ class KeyMacroUI(FramelessWindow):
 
     def closeEvent(self, event):
         self.saveKeyMacros()
+        event.accept()
 
 
 class KeyMacroInfoBar(QFrame):
-    closedSignal = pyqtSignal(str)
+    clickedSignal = pyqtSignal(str)
+    deletedSignal = pyqtSignal(str)
     playedSignal = pyqtSignal(str)
     recordedSignal = pyqtSignal(str)
 
     def __init__(self, icon, macroConfig: dict, parent=None):
         super().__init__(parent=parent)
-        self.icon = icon
-
         self.macroConfig = macroConfig
         self.id = macroConfig.get("id")
         self.keyMacro = KeyMacro(macroConfig.get("record"))
+
+        self.icon = icon
+        self.flyoutHandler = None
 
         self.__initUI()
 
@@ -129,7 +157,7 @@ class KeyMacroInfoBar(QFrame):
         self.titleLabel = QLabel(self.macroConfig.get('title', ""))
         self.contentLabel = LabelEdit()
         self.contentLabel.setText(self.macroConfig.get('name', ""))
-        self.contentLabel.textEdited.connect(self.__setName)
+        self.contentLabel.textEdited.connect(self.setName)
         self.iconWidget = InfoIconWidget(self.icon)
 
         self.hBoxLayout = QHBoxLayout(self)
@@ -142,10 +170,12 @@ class KeyMacroInfoBar(QFrame):
         self.setGraphicsEffect(self.opacityEffect)
 
         self.recordButton = TransparentToggleToolButton(FluentIcon.PLAY)
-        self.recordButton.clicked.connect(self.__recording)
+        self.recordButton.clicked.connect(self.recording)
+        self.recordButton.setToolTip("开始录制")
 
         self.playButton = TransparentToggleToolButton(FluentIcon.PLAY_SOLID)
-        self.playButton.clicked.connect(self.__playing)
+        self.playButton.clicked.connect(self.playing)
+        self.playButton.setToolTip("开始播放")
 
         self.isKeyCheckBox = CheckBox("键盘")
         self.isKeyCheckBox.setChecked(True)
@@ -157,17 +187,19 @@ class KeyMacroInfoBar(QFrame):
 
         self.editButton = TransparentToolButton(FluentIcon.EDIT)
         self.editButton.clicked.connect(self.__editing)
+        self.editButton.setToolTip("编辑脚本")
 
         self.settingButton = TransparentToolButton(FluentIcon.SETTING)
         self.settingButton.clicked.connect(self.__setting)
+        self.settingButton.setToolTip("设置")
 
         self.editingView = EditScriptView('编辑')
-        self.editingView.submitSignal.connect(self.__setRecord)
+        self.editingView.submitSignal.connect(self.setRecord)
 
         self.settingView = SettingsView("设置")
         self.settingView.setDelayValue(self.macroConfig.get("delay", 0))
-        self.settingView.removeSignal.connect(self.__fadeOut)
-        self.settingView.delayChangedSignal.connect(self.__setDelay)
+        self.settingView.removeSignal.connect(self.__deleting)
+        self.settingView.delayChangedSignal.connect(self.setDelay)
 
         if len(self.keyMacro.eventsRecord) <= 0:
             self.playButton.setEnabled(False)
@@ -182,25 +214,20 @@ class KeyMacroInfoBar(QFrame):
 
         self.textLayout.setAlignment(Qt.AlignVCenter)
         self.textLayout.setContentsMargins(1, 8, 0, 8)
-        self.textLayout.setSpacing(5)
+        self.textLayout.setSpacing(10)
 
-        # add icon to layout
-        self.hBoxLayout.addWidget(self.iconWidget, 0, Qt.AlignVCenter | Qt.AlignLeft)
+        self.hBoxLayout.addWidget(self.iconWidget, alignment=Qt.AlignVCenter | Qt.AlignLeft)
 
-        # # add title to layout
-        self.textLayout.addWidget(self.titleLabel, 0, Qt.AlignVCenter | Qt.AlignLeft)
-        self.textLayout.addSpacing(7)
         if not self.macroConfig.get('title'):
             self.titleLabel.setVisible(False)
-
-        self.textLayout.addWidget(self.contentLabel, 0, Qt.AlignVCenter | Qt.AlignLeft)
         if not self.macroConfig.get('name'):
             self.contentLabel.setVisible(False)
+        self.textLayout.addWidget(self.titleLabel, alignment=Qt.AlignVCenter | Qt.AlignLeft)
+        self.textLayout.addWidget(self.contentLabel)
 
         self.hBoxLayout.addLayout(self.textLayout)
         self.hBoxLayout.addLayout(self.widgetLayout)
 
-        self.widgetLayout.addStretch(1)
         self.addWidget(self.isKeyCheckBox)
         self.addWidget(self.isMouseCheckBox)
         self.addWidget(self.recordButton)
@@ -212,7 +239,7 @@ class KeyMacroInfoBar(QFrame):
 
         # add close button to layout
         self.hBoxLayout.addSpacing(12)
-        self.hBoxLayout.addWidget(self.settingButton, 0, Qt.AlignVCenter | Qt.AlignLeft)
+        self.hBoxLayout.addWidget(self.settingButton, alignment=Qt.AlignVCenter | Qt.AlignRight)
 
     def __setQss(self):
         self.titleLabel.setObjectName('titleLabel')
@@ -246,105 +273,117 @@ class KeyMacroInfoBar(QFrame):
             }
             """)
 
-    def __fadeOut(self):
-        if not showMessageDialog("提示", "是否删除脚本?", self):
-            return
-        self.opacityAni.setDuration(100)
-        self.opacityAni.setStartValue(1)
-        self.opacityAni.setEndValue(0)
-        self.opacityAni.finished.connect(self.close)
-        self.opacityAni.start()
-
-    def __setName(self, text: str):
+    def setName(self, text: str):
         self.macroConfig['name'] = text
 
-    def __setDelay(self, delay: int):
+    def setDelay(self, delay: int):
         self.macroConfig['delay'] = delay
 
-    def __setRecord(self, text: str):
-        pass
-
-    def __recording(self, event):
-        def record():
+    def setRecord(self, contents: str):
+        def recorded():
             self.recordedSignal.emit(self.id)
 
-        if event:
+        if len(contents) > 0:
+            keyMacro = KeyMacro()
+            delay = 0.0
+            try:
+                for line in contents.splitlines():
+                    if ',' in line:
+                        lineSplit = line.split(",")
+                        recordKey, recordType = lineSplit[0].strip(), lineSplit[1].strip()
+                        if recordType == "move":
+                            keyMacro.addMouseRecord(tuple(recordKey), recordType, delay)
+                        elif recordType == "wheel":
+                            keyMacro.addMouseRecord(float(recordKey), recordType, delay)
+                        elif recordKey in {"mouse left", "mouse right", "mouse middle"}:
+                            keyMacro.addMouseRecord(recordKey.replace("mouse ", ''), recordType, delay)
+                        else:
+                            keyMacro.addKeyRecord(recordKey, recordType, delay)
+                    else:
+                        delay += float(line.strip())
+                self.keyMacro = keyMacro
+            except Exception as e:
+                InfoBar.error("", f"保存失败!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                return
+
+            self.clearFlyout()
+            _thread.start_new_thread(recorded, ())
+            InfoBar.info("", "保存成功!", Qt.Horizontal, True, 2000, InfoBarPosition.TOP_LEFT, self.window())
+        else:
+            InfoBar.warning("", "脚本内容不能为空!", Qt.Horizontal, True, 2000, InfoBarPosition.TOP_LEFT, self.window())
+
+    def recording(self, enable: bool):
+        def recorded():
+            self.recordedSignal.emit(self.id)
+
+        if enable:
             if len(self.keyMacro.eventsRecord) > 0 and not showMessageDialog("提示", "是否要重新录制脚本?", self):
                 self.recordButton.setChecked(False)
                 return
             self.keyMacro.terminateRecord()
-            self.playButton.setEnabled(False)
-            self.recordButton.setIcon(FluentIcon.PAUSE)
-            if not self.recordButton.isChecked():
-                self.recordButton.setChecked(True)
+            self.switchRecordStatus(False)
             self.keyMacro.startRecording(isKey=self.isKeyCheckBox.isChecked(), isMouse=self.isMouseCheckBox.isChecked())
         else:
             self.keyMacro.stopRecording()
-            if len(self.keyMacro.eventsRecord) > 0:
-                self.playButton.setEnabled(True)
-            self.recordButton.setIcon(FluentIcon.PLAY)
-            if self.recordButton.isChecked():
-                self.recordButton.setChecked(False)
-            _thread.start_new_thread(record, ())
+            self.switchRecordStatus(True)
+            _thread.start_new_thread(recorded, ())
 
-    def __recorded(self, _id):
+    @pyqtSlot()
+    def __recorded(self):
         if len(self.keyMacro.eventsRecord) > 0:
             self.macroConfig['title'] = "Script"
             self.macroConfig['record'] = self.keyMacro.eventsRecord
             self.titleLabel.setText("Script")
             self.icon = FluentIcon.QUICK_NOTE
             self.iconWidget.icon = self.icon
-            self.settingButton.setEnabled(True)
 
-    def __playing(self, event):
+    def playing(self, enable: bool):
         def callback():
             self.playedSignal.emit(self.id)
 
-        if event:
+        if enable:
             print("playing...")
-            self.recordButton.setEnabled(False)
-            self.playButton.setIcon(FluentIcon.PAUSE_BOLD)
-            self.isLoopCheckBox.setEnabled(False)
-            self.editButton.setEnabled(False)
-            if not self.playButton.isChecked():
-                self.playButton.setChecked(True)
+            self.switchPlayStatus(False)
             self.keyMacro.playRecord(True, self.isLoopCheckBox.isChecked(), self.macroConfig.get('delay'), callback)
         else:
             print('stop playing.')
             self.keyMacro.terminateRecord()
-            self.recordButton.setEnabled(True)
-            self.playButton.setIcon(FluentIcon.PLAY_SOLID)
-            if self.playButton.isChecked():
-                self.playButton.setChecked(False)
-            self.isLoopCheckBox.setEnabled(True)
-            self.editButton.setEnabled(True)
+            self.switchPlayStatus(True)
 
-    def __played(self, _id):
-        self.playButton.setChecked(False)
-        self.playButton.setIcon(FluentIcon.PLAY_SOLID)
-        self.recordButton.setEnabled(True)
-        self.isLoopCheckBox.setEnabled(True)
-        self.editButton.setEnabled(True)
+    @pyqtSlot()
+    def __played(self):
+        print("play over.")
+        self.switchPlayStatus(True)
+
+    def __deleting(self):
+        self.clearFlyout()
+        if not showMessageDialog("提示", "是否删除脚本?", self):
+            return
+        self.fadeOut()
+        self.deletedSignal.emit(self.id)
 
     def __editing(self, event):
         contents = ""
         lastTime = next(iter(self.keyMacro.eventsRecord[0].values()))['time'] if len(self.keyMacro.eventsRecord) > 0 else 0
-        for record in self.keyMacro.eventsRecord:
-            line = ""
-            for values in record.values():
-                for k, v in values.items():
-                    if k == "time":
-                        line += f"{int((v - lastTime) * 1000):04d}"
-                        lastTime = v
-                    else:
-                        line += f"{str(v).strip()}, "
-            contents += f"{line}\n"
+        try:
+            for eventRecord in self.keyMacro.eventsRecord:
+                for eventType, record in eventRecord.items():
+                    recordKey = record['key' if "key" in record else ('offset' if 'offset' in record else "delta")]
+                    recordType = record['type']
+                    recordTime = record['time']
+                    if eventType == "mouse" and (recordKey == "left" or recordKey == "right" or recordKey == "middle"):
+                        recordKey = f"mouse {recordKey}"
+
+                    contents += f"{int((recordTime - lastTime) * 1000):04d}\n{recordKey}, {recordType}\n"
+                    lastTime = recordTime
+        except Exception as e:
+            InfoBar.error("", f"脚本文本化失败!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
 
         self.editingView.setEditText(contents)
-        Flyout.make(self.editingView, self.editButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
+        self.flyoutHandler = Flyout.make(self.editingView, self.editButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
 
     def __setting(self, event):
-        Flyout.make(self.settingView, self.settingButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
+        self.flyoutHandler = Flyout.make(self.settingView, self.settingButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
 
     def addWidget(self, widget: QWidget, stretch=0):
         self.widgetLayout.addSpacing(15)
@@ -354,10 +393,57 @@ class KeyMacroInfoBar(QFrame):
         self.widgetLayout.addSpacing(15)
         self.widgetLayout.addLayout(layout, stretch)
 
+    def fadeOut(self):
+        self.opacityAni.setDuration(100)
+        self.opacityAni.setStartValue(1)
+        self.opacityAni.setEndValue(0)
+        self.opacityAni.finished.connect(self.close)
+        self.opacityAni.start()
+
+    def fadeIn(self):
+        self.opacityAni.setDuration(100)
+        self.opacityAni.setStartValue(0)
+        self.opacityAni.setEndValue(1)
+        self.opacityAni.start()
+
+    def clearFlyout(self):
+        if self.flyoutHandler is not None:
+            self.flyoutHandler.close()
+
+    def switchRecordStatus(self, status: bool):
+        self.recordButton.setChecked(not status)
+        if status:
+            self.recordButton.setIcon(FluentIcon.PLAY)
+            if len(self.keyMacro.eventsRecord) > 0:
+                self.playButton.setEnabled(status)
+                self.settingButton.setEnabled(status)
+        else:
+            self.recordButton.setIcon(FluentIcon.PAUSE)
+            self.playButton.setEnabled(status)
+            self.settingButton.setEnabled(status)
+        self.editButton.setEnabled(status)
+
+    def switchPlayStatus(self, status: bool):
+        self.playButton.setChecked(not status)
+        if status:
+            self.playButton.setIcon(FluentIcon.PLAY_SOLID)
+        else:
+            self.playButton.setIcon(FluentIcon.PAUSE_BOLD)
+        self.recordButton.setEnabled(status)
+        self.isLoopCheckBox.setEnabled(status)
+        self.editButton.setEnabled(status)
+        self.settingButton.setEnabled(status)
+
+    def setOpacity(self, value: float):
+        self.opacityEffect.setOpacity(value)
+
+    def mousePressEvent(self, event):
+        self.clickedSignal.emit(self.id)
+        return super().mousePressEvent(event)
+
     def closeEvent(self, e):
-        self.closedSignal.emit(self.id)
         self.deleteLater()
-        e.ignore()
+        e.accept()
 
 
 class EditScriptView(FlyoutView):
@@ -370,6 +456,7 @@ class EditScriptView(FlyoutView):
     def __initUI(self):
         self.editText = TextEdit()
         self.editText.setMinimumSize(250, 200)
+        setFont(self.editText, 16)
 
         self.submitButton = PushButton(FluentIcon.SAVE, "保存")
         self.submitButton.clicked.connect(self.__submit)
@@ -425,7 +512,6 @@ class LabelEdit(LineEdit):
         self.setReadOnly(True)
         self.setContentsMargins(0, 0, 0, 0)
         self.setMinimumWidth(100)
-        self.setMaximumWidth(1000)
         self.returnPressed.connect(self.enterPressEvent)
 
     def mouseDoubleClickEvent(self, event):
@@ -466,6 +552,7 @@ class SplitLineWidget(QFrame):
         self.setStyleSheet("QFrame{background:#A0A0A0;min-height:5px;border:0px}")
         self.setFixedSize(2, 25)
 
+
 # ------------------------------------------Common------------------------------------------ #
 
 
@@ -480,12 +567,6 @@ def showMessageDialog(title: str, content: str, parent: QWidget):
         if msgBox.exec():
             return True
     return False
-
-
-def moveCenter(widget: QWidget):
-    desktop = QApplication.desktop().availableGeometry()
-    w, h = desktop.width(), desktop.height()
-    widget.move(w // 2 - widget.width() // 2, h // 2 - widget.height() // 2)
 
 
 def loadJson(jsonPath: str | Path, mode: str = 'r', encoding: str = 'utf-8') -> dict:
