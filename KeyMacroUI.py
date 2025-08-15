@@ -307,6 +307,7 @@ class KeyMacroInfoBar(QFrame):
                 return
 
             self.clearFlyout()
+            self.switchRecordStatus(True)
             _thread.start_new_thread(recorded, ())
             InfoBar.info("", "保存成功!", Qt.Horizontal, True, 2000, InfoBarPosition.TOP_LEFT, self.window())
         else:
