@@ -3,3 +3,4 @@ mouse
 PyQt5
 PyQt-Fluent-Widgets
 ujson
+pyinstaller
