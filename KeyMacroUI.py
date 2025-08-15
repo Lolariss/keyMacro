@@ -286,8 +286,11 @@ class KeyMacroInfoBar(QFrame):
         if len(contents) > 0:
             keyMacro = KeyMacro()
             delay = 0.0
+            row = 0
             try:
-                for line in contents.splitlines():
+                for row, line in enumerate(contents.splitlines()):
+                    if len(line.strip()) == 0:
+                        continue
                     if ',' in line:
                         lineSplit = line.split(",")
                         recordKey, recordType = lineSplit[0].strip(), lineSplit[1].strip()
@@ -303,7 +306,7 @@ class KeyMacroInfoBar(QFrame):
                         delay += float(line.strip())
                 self.keyMacro = keyMacro
             except Exception as e:
-                InfoBar.error("", f"保存失败!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                InfoBar.error("", f"保存失败!第{row + 1}行发现错误!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
                 return
 
             self.clearFlyout()
