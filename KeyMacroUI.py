@@ -31,7 +31,7 @@ class KeyMacroUI(FramelessWindow):
         self.__initUI()
 
         keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord)
-        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay, suppress=True)
+        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay)
 
     def __initUI(self):
         self.setContentsMargins(0, 35, 0, 10)
@@ -112,10 +112,12 @@ class KeyMacroUI(FramelessWindow):
             self.currentInfoBar = self.keyMacroWidgets.get(macroID)
 
     def __shortCutPlay(self):
+        print("shortcut play...")
         if self.currentInfoBar is not None:
             self.currentInfoBar.playing(not self.currentInfoBar.playButton.isChecked())
 
     def __shortCutRecord(self):
+        print("shortcut record...")
         if self.currentNewInfoBar is not None:
             self.currentNewInfoBar.recording(not self.currentNewInfoBar.recordButton.isChecked())
 
@@ -285,8 +287,7 @@ class KeyMacroInfoBar(QFrame):
 
         if len(contents) > 0:
             keyMacro = KeyMacro()
-            delay = 0.0
-            row = 0
+            row, delay = 0, 0
             try:
                 for row, line in enumerate(contents.splitlines()):
                     if len(line.strip()) == 0:
@@ -302,8 +303,9 @@ class KeyMacroInfoBar(QFrame):
                             keyMacro.addMouseRecord(recordKey.replace("mouse ", ''), recordType, delay)
                         else:
                             keyMacro.addKeyRecord(recordKey, recordType, delay)
+                        delay = 0
                     else:
-                        delay += float(line.strip())
+                        delay = float(line.strip())
                 self.keyMacro = keyMacro
             except Exception as e:
                 InfoBar.error("", f"保存失败!第{row + 1}行发现错误!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
