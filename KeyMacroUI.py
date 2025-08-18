@@ -1,5 +1,5 @@
 import time
-
+import winsound
 import keyboard
 import ujson
 import _thread
@@ -15,6 +15,9 @@ from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolBu
     FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
 from qfluentwidgets.components.widgets.info_bar import InfoIconWidget, InfoBar, InfoBarPosition
+
+
+SOUND_DIR = Path.cwd() / "sound"
 
 
 class KeyMacroUI(FramelessWindow):
@@ -327,10 +330,12 @@ class KeyMacroInfoBar(QFrame):
                 self.recordButton.setChecked(False)
                 return
             self.keyMacro.terminateRecord()
+            winsound.PlaySound(str(SOUND_DIR / "recordOn.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.switchRecordStatus(False)
             self.keyMacro.startRecording(isKey=self.isKeyCheckBox.isChecked(), isMouse=self.isMouseCheckBox.isChecked())
         else:
             self.keyMacro.stopRecording()
+            winsound.PlaySound(str(SOUND_DIR / "recordOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.switchRecordStatus(True)
             _thread.start_new_thread(recorded, ())
 
@@ -349,6 +354,7 @@ class KeyMacroInfoBar(QFrame):
 
         if enable:
             print("playing...")
+            winsound.PlaySound(str(SOUND_DIR / "playOn.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.switchPlayStatus(False)
             self.keyMacro.playRecord(True, self.isLoopCheckBox.isChecked(), self.macroConfig.get('delay'), callback)
         else:
@@ -359,6 +365,7 @@ class KeyMacroInfoBar(QFrame):
     @pyqtSlot()
     def __played(self):
         print("play over.")
+        winsound.PlaySound(str(SOUND_DIR / "playOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
         self.switchPlayStatus(True)
 
     def __deleting(self):
