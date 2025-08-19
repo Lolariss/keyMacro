@@ -133,6 +133,7 @@ class KeyMacroUI(FramelessWindow):
 
     def closeEvent(self, event):
         self.saveKeyMacros()
+        keyboard.remove_all_hotkeys()
         event.accept()
 
 

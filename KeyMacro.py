@@ -91,6 +91,7 @@ class KeyMacro:
                         break
                     if delay > 0:
                         time.sleep(delay / 1000)
+                keyboard.restore_state([])
                 if callback is not None:
                     callback()
             except Exception as e:
