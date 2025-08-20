@@ -37,7 +37,7 @@ class KeyMacro:
     def startRecording(self, isKey: bool = True, isMouse: bool = True, isUntil: str = None):
         def waiting():
             keyboard.wait(isUntil)
-            self.stopRecording()
+            self.stopRecording(isKey, isMouse)
 
         if not self.isRecording:
             self.eventsRecord.clear()
@@ -50,11 +50,13 @@ class KeyMacro:
             if isUntil is not None:
                 _thread.start_new_thread(waiting, ())
 
-    def stopRecording(self):
+    def stopRecording(self, isKey: bool = True, isMouse: bool = True):
         if self.isRecording:
             self.isRecording = False
-            keyboard.unhook_all()
-            mouse.unhook_all()
+            if isKey:
+                keyboard.unhook(self.__recordKeyEvent)
+            if isMouse:
+                mouse.unhook(self.__recordMouseEvent)
 
     def __recordKeyEvent(self, event):
         # print("recording keyboard...")

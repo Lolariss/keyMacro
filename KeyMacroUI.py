@@ -33,17 +33,17 @@ class KeyMacroUI(FramelessWindow):
         self.currentNewInfoBar = None
         self.__initUI()
 
-        keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord)
-        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay)
+        keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord, suppress=True)
+        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay, suppress=True)
 
     def __initUI(self):
         self.setContentsMargins(0, 35, 0, 10)
         self.setTitleBar(MSFluentTitleBar(self))
         self.setWindowTitle("按按又键键(￣▽￣)")
         self.setWindowIcon(Icon(FluentIcon.FINGERPRINT))
-        self.resize(700, 250)
+        self.resize(700, 200)
         self.setMaximumSize(1920, 1080)
-        self.setMinimumSize(700, 250)
+        self.setMinimumSize(700, 200)
         self.setFocusPolicy(Qt.StrongFocus)
 
         self.keyMacrosUI = self.__loadKeyMacrosUI()
@@ -87,8 +87,8 @@ class KeyMacroUI(FramelessWindow):
 
         newInfoBar = self.__newKeyMacroInfoBar()
         keyMacroLayout.addWidget(newInfoBar)
-        if len(self.keyMacros) > 2:
-            self.resize(self.width(), min(len(self.keyMacros) * 100, 500))
+        if len(self.keyMacros) > 0:
+            self.resize(self.width(), self.height() + min(len(self.keyMacros) * 75, 500))
         return keyMacroLayout
 
     def __updateKeyMacro(self, macroID: str):
@@ -333,9 +333,9 @@ class KeyMacroInfoBar(QFrame):
             self.keyMacro.terminateRecord()
             winsound.PlaySound(str(SOUND_DIR / "recordOn.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.switchRecordStatus(False)
-            self.keyMacro.startRecording(isKey=self.isKeyCheckBox.isChecked(), isMouse=self.isMouseCheckBox.isChecked())
+            self.keyMacro.startRecording(self.isKeyCheckBox.isChecked(), self.isMouseCheckBox.isChecked())
         else:
-            self.keyMacro.stopRecording()
+            self.keyMacro.stopRecording(self.isKeyCheckBox.isChecked(), self.isMouseCheckBox.isChecked())
             winsound.PlaySound(str(SOUND_DIR / "recordOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.switchRecordStatus(True)
             _thread.start_new_thread(recorded, ())
@@ -357,7 +357,7 @@ class KeyMacroInfoBar(QFrame):
             print("playing...")
             winsound.PlaySound(str(SOUND_DIR / "playOn.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.switchPlayStatus(False)
-            self.keyMacro.playRecord(True, self.isLoopCheckBox.isChecked(), self.macroConfig.get('delay'), callback)
+            self.keyMacro.playRecord(True, self.isLoopCheckBox.isChecked(), self.macroConfig.get('delay', 0), callback)
         else:
             print('stop playing.')
             self.keyMacro.terminateRecord()
@@ -435,6 +435,8 @@ class KeyMacroInfoBar(QFrame):
             self.recordButton.setIcon(FluentIcon.PAUSE)
             self.playButton.setEnabled(status)
             self.settingButton.setEnabled(status)
+        self.isKeyCheckBox.setEnabled(status)
+        self.isMouseCheckBox.setEnabled(status)
         self.editButton.setEnabled(status)
 
     def switchPlayStatus(self, status: bool):
