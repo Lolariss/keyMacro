@@ -9,7 +9,7 @@ from pathlib import Path
 from KeyMacro import KeyMacro
 
 from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, pyqtSlot
-from PyQt5.QtGui import QPainter, QColor, QPen
+from PyQt5.QtGui import QPainter, QColor, QPen, QKeySequence
 from PyQt5.QtWidgets import QApplication, QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QGraphicsOpacityEffect
 from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TransparentToggleToolButton, CheckBox, LineEdit, MessageBox, FlyoutView, \
     FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont
@@ -204,8 +204,10 @@ class KeyMacroInfoBar(QFrame):
 
         self.settingView = SettingsView("设置")
         self.settingView.setDelayValue(self.macroConfig.get("delay", 0))
+        self.settingView.setHotKey(self.macroConfig.get("hotkey", ""))
         self.settingView.removeSignal.connect(self.__deleting)
         self.settingView.delayChangedSignal.connect(self.setDelay)
+        self.settingView.hotkeyChangedSignal.connect(self.setHotkey)
 
         if len(self.keyMacro.eventsRecord) <= 0:
             self.playButton.setEnabled(False)
@@ -285,6 +287,9 @@ class KeyMacroInfoBar(QFrame):
     def setDelay(self, delay: int):
         self.macroConfig['delay'] = delay
 
+    def setHotkey(self, hotkey: str):
+        self.macroConfig['hotkey'] = hotkey
+
     def setRecord(self, contents: str):
         def recorded():
             self.recordedSignal.emit(self.id)
@@ -360,8 +365,9 @@ class KeyMacroInfoBar(QFrame):
             self.keyMacro.playRecord(True, self.isLoopCheckBox.isChecked(), self.macroConfig.get('delay', 0), callback)
         else:
             print('stop playing.')
-            self.keyMacro.terminateRecord()
+            self.keyMacro.terminateRecord(False)
             self.switchPlayStatus(True)
+            winsound.PlaySound(str(SOUND_DIR / "playOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
 
     @pyqtSlot()
     def __played(self):
@@ -490,12 +496,15 @@ class EditScriptView(FlyoutView):
 class SettingsView(FlyoutView):
     removeSignal = pyqtSignal()
     delayChangedSignal = pyqtSignal(int)
+    hotkeyChangedSignal = pyqtSignal(str)
 
     def __init__(self, title: str, parent=None):
         super().__init__(title, "", parent=parent)
         self.__initUI()
 
     def __initUI(self):
+        self.setFocusPolicy(Qt.StrongFocus)
+
         self.removeButton = PushButton(FluentIcon.DELETE, "删除脚本")
         self.removeButton.setCursor(Qt.PointingHandCursor)
         self.removeButton.clicked.connect(self.removeSignal)
@@ -508,17 +517,70 @@ class SettingsView(FlyoutView):
         self.delayLabel = QLabel("循环间隔/ms")
         self.delayLabel.setStyleSheet("font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';")
 
+        self.hotkeyLabel = QLabel("快捷按键")
+        self.hotkeyLabel.setStyleSheet("font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';")
+        self.hotkeyEdit = HotKeyEdit()
+        self.hotkeyEdit.textChanged.connect(self.hotkeyChangedSignal)
+
         self.addWidget(self.removeButton)
 
         self.widgetLayout.addSpacing(5)
         self.addWidget(self.delayLabel)
         self.addWidget(self.delayEdit)
+        self.widgetLayout.addSpacing(5)
+        self.addWidget(self.hotkeyLabel)
+        self.addWidget(self.hotkeyEdit)
 
     def getDelayValue(self):
         return self.delayEdit.value()
 
     def setDelayValue(self, value):
         self.delayEdit.setValue(value)
+
+    def getHotkey(self):
+        return self.hotkeyEdit.text()
+
+    def setHotKey(self, hotkey: str):
+        self.hotkeyEdit.setText(hotkey)
+
+
+class HotKeyEdit(LineEdit):
+
+    def __init__(self, shortcut: str = "", parent=None):
+        super().__init__(parent=parent)
+        self.shortcut = shortcut
+        self.__initUI()
+
+    def __initUI(self):
+        self.setText(self.shortcut)
+
+    def focusOutEvent(self, event):
+        return super().focusOutEvent(event)
+
+    def keyPressEvent(self, event):
+        key = event.key()
+
+        # 忽略重复按键事件
+        if event.isAutoRepeat():
+            return
+
+        modifiers = event.modifiers()
+        if key == Qt.Key_Escape:
+            self.clear()
+            return
+
+        # 如果按下的是Enter/Return，完成录制
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            self.clearFocus()
+            return
+
+        # 忽略单独的修饰键
+        if key in (Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta):
+            return
+
+        # 添加修饰键
+        self.shortcut = QKeySequence(modifiers | key).toString()
+        self.setText(self.shortcut)
 
 
 class LabelEdit(LineEdit):

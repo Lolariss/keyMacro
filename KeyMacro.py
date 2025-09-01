@@ -30,6 +30,7 @@ class KeyMacro:
         self.eventsRecord = [] if eventsRecord is None else eventsRecord
         self.isRecording = False
         self.isPlaying = False
+        self.isCallback = True
 
     def __repr__(self):
         return str(self.eventsRecord)
@@ -71,8 +72,8 @@ class KeyMacro:
         else:
             self.eventsRecord.append({"mouse": {"delta": event.delta, "type": "wheel", "time": event.time}})
 
-    def playRecord(self, keepInterval: bool = True, isLoop: bool = False, delay: int = 0, callback=None):
-        def playing(eventsRecord, keepInterval, isLoop):
+    def playRecord(self, keepInterval: bool = True, isLoop: bool = False, delay: int = 0, callback=None, kwargs: dict = None):
+        def playing(eventsRecord, keepInterval, isLoop, delay):
             self.isPlaying = True
             try:
                 eventHandler = self.__EVENT_HANDLER['default']
@@ -94,18 +95,23 @@ class KeyMacro:
                     if delay > 0:
                         time.sleep(delay / 1000)
                 keyboard.restore_state([])
-                if callback is not None:
-                    callback()
+                if callback is not None and self.isCallback:
+                    if isinstance(kwargs, dict):
+                        callback(**kwargs)
+                    else:
+                        callback()
             except Exception as e:
                 print(f"执行宏失败! {e}")
             finally:
                 self.isPlaying = False
 
         if not self.isPlaying and len(self.eventsRecord) > 0:
-            _thread.start_new_thread(playing, (self.eventsRecord, keepInterval, isLoop))
+            self.isCallback = True
+            _thread.start_new_thread(playing, (self.eventsRecord, keepInterval, isLoop, delay))
 
-    def terminateRecord(self):
+    def terminateRecord(self, isCallback=True):
         self.isPlaying = False
+        self.isCallback = isCallback
 
     def addKeyRecord(self, key, event, msec):
         baseTime = 0 if len(self.eventsRecord) == 0 else next(iter(self.eventsRecord[-1].values()))['time']
