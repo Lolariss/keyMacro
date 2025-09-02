@@ -297,6 +297,7 @@ class KeyMacroInfoBar(QFrame):
             except Exception as e:
                 logger.exception(e)
                 InfoBar.warning("", "解绑旧快捷键失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                self.hotkey = None
 
         if len(hotkey) > 0:
             logger.info(f'set {hotkey} {self.macroConfig.get("name", "")} shortcut play')
@@ -306,6 +307,7 @@ class KeyMacroInfoBar(QFrame):
             except Exception as e:
                 logger.exception(e)
                 InfoBar.error("", "绑定新快捷键失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                self.hotkey = None
         else:
             logger.info(f'clear {self.macroConfig.get("name", "")} shortcut play')
             self.macroConfig['hotkey'] = ""
