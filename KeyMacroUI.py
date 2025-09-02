@@ -292,12 +292,20 @@ class KeyMacroInfoBar(QFrame):
 
     def setHotkey(self, hotkey: str = ""):
         if self.hotkey is not None:
-            keyboard.remove_hotkey(self.hotkey)
+            try:
+                keyboard.remove_hotkey(self.hotkey)
+            except Exception as e:
+                logger.exception(e)
+                InfoBar.warning("", "解绑旧快捷键失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
 
-        self.macroConfig['hotkey'] = hotkey
         if len(hotkey) > 0:
             logger.info(f'set {hotkey} {self.macroConfig.get("name", "")} shortcut play')
-            self.hotkey = keyboard.add_hotkey(hotkey, self.playing)
+            try:
+                self.hotkey = keyboard.add_hotkey(hotkey, self.playing)
+                self.macroConfig['hotkey'] = hotkey
+            except Exception as e:
+                logger.exception(e)
+                InfoBar.error("", "绑定新快捷键失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
         else:
             logger.info(f'clear {self.macroConfig.get("name", "")} shortcut play')
 
@@ -394,6 +402,8 @@ class KeyMacroInfoBar(QFrame):
         self.clearFlyout()
         if not showMessageDialog("提示", "是否删除脚本?", self):
             return
+        if self.hotkey is not None:
+            keyboard.remove_hotkey(self.hotkey)
         self.fadeOut()
         self.deletedSignal.emit(self.id)
 
@@ -573,6 +583,9 @@ class HotKeyEdit(LineEdit):
     def focusOutEvent(self, event):
         return super().focusOutEvent(event)
 
+    def inputMethodEvent(self, event):
+        event.ignore()
+
     def keyPressEvent(self, event):
         key = event.key()
 
@@ -582,6 +595,7 @@ class HotKeyEdit(LineEdit):
 
         modifiers = event.modifiers()
         if key == Qt.Key_Escape:
+            self.shortcut = ""
             self.clear()
             return
 
@@ -591,7 +605,7 @@ class HotKeyEdit(LineEdit):
             return
 
         # 忽略单独的修饰键
-        if key in (Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta):
+        if key in {Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_unknown}:
             return
 
         # 添加修饰键
