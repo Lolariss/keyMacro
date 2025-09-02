@@ -308,6 +308,7 @@ class KeyMacroInfoBar(QFrame):
                 InfoBar.error("", "绑定新快捷键失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
         else:
             logger.info(f'clear {self.macroConfig.get("name", "")} shortcut play')
+            self.macroConfig['hotkey'] = ""
 
     def setRecord(self, contents: str):
         def recorded():
