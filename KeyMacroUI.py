@@ -7,6 +7,7 @@ import _thread
 from enum import Enum
 from pathlib import Path
 from KeyMacro import KeyMacro
+from utils import loadJson, dumpJson, logger
 
 from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, pyqtSlot
 from PyQt5.QtGui import QPainter, QColor, QPen, QKeySequence
@@ -115,13 +116,13 @@ class KeyMacroUI(FramelessWindow):
             self.currentInfoBar = self.keyMacroWidgets.get(macroID)
 
     def __shortCutPlay(self):
-        print("shortcut play...")
         if self.currentInfoBar is not None:
+            logger.info("shortcut play...")
             self.currentInfoBar.playing(not self.currentInfoBar.playButton.isChecked())
 
     def __shortCutRecord(self):
-        print("shortcut record...")
         if self.currentNewInfoBar is not None:
+            logger.info("shortcut record...")
             self.currentNewInfoBar.recording(not self.currentNewInfoBar.recordButton.isChecked())
 
     def loadKeyMacros(self):
@@ -148,11 +149,13 @@ class KeyMacroInfoBar(QFrame):
         self.macroConfig = macroConfig
         self.id = macroConfig.get("id")
         self.keyMacro = KeyMacro(macroConfig.get("record"))
+        self.hotkey = None
 
         self.icon = icon
         self.flyoutHandler = None
 
         self.__initUI()
+        self.setHotkey(macroConfig.get('hotkey', ""))
 
     def __initUI(self):
         self.playedSignal.connect(self.__played)
@@ -287,8 +290,16 @@ class KeyMacroInfoBar(QFrame):
     def setDelay(self, delay: int):
         self.macroConfig['delay'] = delay
 
-    def setHotkey(self, hotkey: str):
+    def setHotkey(self, hotkey: str = ""):
+        if self.hotkey is not None:
+            keyboard.remove_hotkey(self.hotkey)
+
         self.macroConfig['hotkey'] = hotkey
+        if len(hotkey) > 0:
+            logger.info(f'set {hotkey} {self.macroConfig.get("name", "")} shortcut play')
+            self.hotkey = keyboard.add_hotkey(hotkey, self.playing)
+        else:
+            logger.info(f'clear {self.macroConfig.get("name", "")} shortcut play')
 
     def setRecord(self, contents: str):
         def recorded():
@@ -317,7 +328,8 @@ class KeyMacroInfoBar(QFrame):
                         delay = float(line.strip())
                 self.keyMacro = keyMacro
             except Exception as e:
-                InfoBar.error("", f"保存失败!第{row + 1}行发现错误!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                logger.exception(e)
+                InfoBar.error("", f"保存失败!第{row + 1}行发现错误!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
                 return
 
             self.clearFlyout()
@@ -354,24 +366,27 @@ class KeyMacroInfoBar(QFrame):
             self.icon = FluentIcon.QUICK_NOTE
             self.iconWidget.icon = self.icon
 
-    def playing(self, enable: bool):
+    def playing(self, enable: bool = None):
         def callback():
             self.playedSignal.emit(self.id)
 
+        if enable is None:
+            enable = not self.playButton.isChecked()
+
         if enable:
-            print("playing...")
+            logger.info("playing...")
             winsound.PlaySound(str(SOUND_DIR / "playOn.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.switchPlayStatus(False)
             self.keyMacro.playRecord(True, self.isLoopCheckBox.isChecked(), self.macroConfig.get('delay', 0), callback)
         else:
-            print('stop playing.')
+            logger.info('stop playing.')
             self.keyMacro.terminateRecord(False)
             self.switchPlayStatus(True)
             winsound.PlaySound(str(SOUND_DIR / "playOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
 
     @pyqtSlot()
     def __played(self):
-        print("play over.")
+        logger.info("play over.")
         winsound.PlaySound(str(SOUND_DIR / "playOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
         self.switchPlayStatus(True)
 
@@ -397,7 +412,8 @@ class KeyMacroInfoBar(QFrame):
                     contents += f"{int((recordTime - lastTime) * 1000):04d}\n{recordKey}: {recordType}\n"
                     lastTime = recordTime
         except Exception as e:
-            InfoBar.error("", f"脚本文本化失败!\n{e}", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+            logger.exception(e)
+            InfoBar.error("", "脚本文本化失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
 
         self.editingView.setEditText(contents)
         self.flyoutHandler = Flyout.make(self.editingView, self.editButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
@@ -631,9 +647,6 @@ class SplitLineWidget(QFrame):
         self.setFixedSize(2, 25)
 
 
-# ------------------------------------------Common------------------------------------------ #
-
-
 def showMessageDialog(title: str, content: str, parent: QWidget):
     if parent.window():
         title = parent.tr(title)
@@ -645,22 +658,6 @@ def showMessageDialog(title: str, content: str, parent: QWidget):
         if msgBox.exec():
             return True
     return False
-
-
-def loadJson(jsonPath: str | Path, mode: str = 'r', encoding: str = 'utf-8') -> dict:
-    if not jsonPath.exists():
-        raise FileNotFoundError(f'[{jsonPath}] json文件读取失败, 文件不存在!')
-    with Path(jsonPath).open(mode, encoding=encoding) as f:
-        json = ujson.load(f)
-    return json
-
-
-def dumpJson(jsonPath: str | Path, json: dict, mode: str = 'w', encoding: str = 'utf-8'):
-    jsonPath = Path(jsonPath)
-    if not jsonPath.parent.exists():
-        jsonPath.parent.mkdir(parents=True)
-    with Path(jsonPath).open(mode, encoding=encoding) as f:
-        ujson.dump(json, f, indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":

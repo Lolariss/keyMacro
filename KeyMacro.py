@@ -4,6 +4,8 @@ import time
 import keyboard
 import mouse
 
+from utils import logger
+
 
 def mouseMove(offset):
     mouse.move(*offset)
@@ -60,11 +62,9 @@ class KeyMacro:
                 mouse.unhook(self.__recordMouseEvent)
 
     def __recordKeyEvent(self, event):
-        # print("recording keyboard...")
         self.eventsRecord.append({"key": {"key": event.name, "type": event.event_type, "time": event.time}})
 
     def __recordMouseEvent(self, event):
-        # print("recording mouse...")
         if isinstance(event, mouse.ButtonEvent):
             self.eventsRecord.append({"mouse": {"key": event.button, "type": event.event_type, "time": event.time}})
         elif isinstance(event, mouse.MoveEvent):
@@ -96,12 +96,13 @@ class KeyMacro:
                         time.sleep(delay / 1000)
                 keyboard.restore_state([])
                 if callback is not None and self.isCallback:
+                    logger.info("calling back...")
                     if isinstance(kwargs, dict):
                         callback(**kwargs)
                     else:
                         callback()
             except Exception as e:
-                print(f"执行宏失败! {e}")
+                logger.exception(f"执行宏失败! {e}")
             finally:
                 self.isPlaying = False
 
