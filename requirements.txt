@@ -1,6 +1,6 @@
+ujson
 keyboard
 mouse
-PyQt5
-PyQt-Fluent-Widgets
-ujson
+PySide6
+PySide6-Fluent-Widgets
 pyinstaller

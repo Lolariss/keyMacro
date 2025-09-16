@@ -1,3 +1,4 @@
+import sys
 import time
 import winsound
 import keyboard
@@ -6,12 +7,14 @@ import _thread
 
 from enum import Enum
 from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, Slot
+from PySide6.QtGui import QKeySequence, QPainter, QPen, QColor
+from PySide6.QtWidgets import QVBoxLayout, QFrame, QLabel, QHBoxLayout, QGraphicsOpacityEffect, QWidget, QApplication
+
 from KeyMacro import KeyMacro
 from utils import loadJson, dumpJson, logger
 
-from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, pyqtSlot
-from PyQt5.QtGui import QPainter, QColor, QPen, QKeySequence
-from PyQt5.QtWidgets import QApplication, QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QGraphicsOpacityEffect
 from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TransparentToggleToolButton, CheckBox, LineEdit, MessageBox, FlyoutView, \
     FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
@@ -45,7 +48,7 @@ class KeyMacroUI(FramelessWindow):
         self.resize(700, 200)
         self.setMaximumSize(1920, 1080)
         self.setMinimumSize(700, 200)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.keyMacrosUI = self.__loadKeyMacrosUI()
         keyMacrosBg = BackgroundWidget()
@@ -139,10 +142,10 @@ class KeyMacroUI(FramelessWindow):
 
 
 class KeyMacroInfoBar(QFrame):
-    clickedSignal = pyqtSignal(str)
-    deletedSignal = pyqtSignal(str)
-    playedSignal = pyqtSignal(str)
-    recordedSignal = pyqtSignal(str)
+    clickedSignal = Signal(str)
+    deletedSignal = Signal(str)
+    playedSignal = Signal(str)
+    recordedSignal = Signal(str)
 
     def __init__(self, icon, macroConfig: dict, parent=None):
         super().__init__(parent=parent)
@@ -161,7 +164,7 @@ class KeyMacroInfoBar(QFrame):
         self.playedSignal.connect(self.__played)
         self.recordedSignal.connect(self.__recorded)
         self.setFixedHeight(75)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.titleLabel = QLabel(self.macroConfig.get('title', ""))
         self.contentLabel = LabelEdit()
@@ -178,27 +181,27 @@ class KeyMacroInfoBar(QFrame):
         self.opacityEffect.setOpacity(1)
         self.setGraphicsEffect(self.opacityEffect)
 
-        self.recordButton = TransparentToggleToolButton(FluentIcon.PLAY)
+        self.recordButton = TransparentToggleToolButton(FluentIcon.PLAY, None)
         self.recordButton.clicked.connect(self.recording)
         self.recordButton.setToolTip("开始录制")
 
-        self.playButton = TransparentToggleToolButton(FluentIcon.PLAY_SOLID)
+        self.playButton = TransparentToggleToolButton(FluentIcon.PLAY_SOLID, None)
         self.playButton.clicked.connect(self.playing)
         self.playButton.setToolTip("开始播放")
 
-        self.isKeyCheckBox = CheckBox("键盘")
+        self.isKeyCheckBox = CheckBox(text="键盘")
         self.isKeyCheckBox.setChecked(True)
 
-        self.isMouseCheckBox = CheckBox("鼠标")
+        self.isMouseCheckBox = CheckBox(text="鼠标")
         self.isMouseCheckBox.setChecked(True)
 
-        self.isLoopCheckBox = CheckBox("循环")
+        self.isLoopCheckBox = CheckBox(text="循环")
 
-        self.editButton = TransparentToolButton(FluentIcon.EDIT)
+        self.editButton = TransparentToolButton(FluentIcon.EDIT, None)
         self.editButton.clicked.connect(self.__editing)
         self.editButton.setToolTip("编辑脚本")
 
-        self.settingButton = TransparentToolButton(FluentIcon.SETTING)
+        self.settingButton = TransparentToolButton(FluentIcon.SETTING, None)
         self.settingButton.clicked.connect(self.__setting)
         self.settingButton.setToolTip("设置")
 
@@ -223,17 +226,17 @@ class KeyMacroInfoBar(QFrame):
         self.hBoxLayout.setContentsMargins(6, 6, 6, 6)
         self.hBoxLayout.setSpacing(0)
 
-        self.textLayout.setAlignment(Qt.AlignVCenter)
+        self.textLayout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.textLayout.setContentsMargins(1, 8, 0, 8)
         self.textLayout.setSpacing(10)
 
-        self.hBoxLayout.addWidget(self.iconWidget, alignment=Qt.AlignVCenter | Qt.AlignLeft)
+        self.hBoxLayout.addWidget(self.iconWidget, alignment=Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
 
         if not self.macroConfig.get('title'):
             self.titleLabel.setVisible(False)
         if not self.macroConfig.get('name'):
             self.contentLabel.setVisible(False)
-        self.textLayout.addWidget(self.titleLabel, alignment=Qt.AlignVCenter | Qt.AlignLeft)
+        self.textLayout.addWidget(self.titleLabel, alignment=Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.textLayout.addWidget(self.contentLabel)
 
         self.hBoxLayout.addLayout(self.textLayout)
@@ -250,7 +253,7 @@ class KeyMacroInfoBar(QFrame):
 
         # add close button to layout
         self.hBoxLayout.addSpacing(12)
-        self.hBoxLayout.addWidget(self.settingButton, alignment=Qt.AlignVCenter | Qt.AlignRight)
+        self.hBoxLayout.addWidget(self.settingButton, alignment=Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
 
     def __setQss(self):
         self.titleLabel.setObjectName('titleLabel')
@@ -296,7 +299,7 @@ class KeyMacroInfoBar(QFrame):
                 keyboard.remove_hotkey(self.hotkey)
             except Exception as e:
                 logger.exception(e)
-                InfoBar.warning("", "解绑旧快捷键失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                InfoBar.warning("", "解绑旧快捷键失败!", Qt.Orientation.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
                 self.hotkey = None
 
         if len(hotkey) > 0:
@@ -306,7 +309,7 @@ class KeyMacroInfoBar(QFrame):
                 self.macroConfig['hotkey'] = hotkey
             except Exception as e:
                 logger.exception(e)
-                InfoBar.error("", "绑定新快捷键失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                InfoBar.error("", "绑定新快捷键失败!", Qt.Orientation.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
                 self.hotkey = None
         else:
             logger.info(f'clear {self.macroConfig.get("name", "")} shortcut play')
@@ -340,15 +343,15 @@ class KeyMacroInfoBar(QFrame):
                 self.keyMacro = keyMacro
             except Exception as e:
                 logger.exception(e)
-                InfoBar.error("", f"保存失败!第{row + 1}行发现错误!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+                InfoBar.error("", f"保存失败!第{row + 1}行发现错误!", Qt.Orientation.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
                 return
 
             self.clearFlyout()
             self.switchRecordStatus(True)
             _thread.start_new_thread(recorded, ())
-            InfoBar.info("", "保存成功!", Qt.Horizontal, True, 2000, InfoBarPosition.TOP_LEFT, self.window())
+            InfoBar.info("", "保存成功!", Qt.Orientation.Horizontal, True, 2000, InfoBarPosition.TOP_LEFT, self.window())
         else:
-            InfoBar.warning("", "脚本内容不能为空!", Qt.Horizontal, True, 2000, InfoBarPosition.TOP_LEFT, self.window())
+            InfoBar.warning("", "脚本内容不能为空!", Qt.Orientation.Horizontal, True, 2000, InfoBarPosition.TOP_LEFT, self.window())
 
     def recording(self, enable: bool):
         def recorded():
@@ -368,7 +371,7 @@ class KeyMacroInfoBar(QFrame):
             self.switchRecordStatus(True)
             _thread.start_new_thread(recorded, ())
 
-    @pyqtSlot()
+    @Slot()
     def __recorded(self):
         if len(self.keyMacro.eventsRecord) > 0:
             self.macroConfig['title'] = "Script"
@@ -395,7 +398,7 @@ class KeyMacroInfoBar(QFrame):
             self.switchPlayStatus(True)
             winsound.PlaySound(str(SOUND_DIR / "playOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
 
-    @pyqtSlot()
+    @Slot()
     def __played(self):
         logger.info("play over.")
         winsound.PlaySound(str(SOUND_DIR / "playOff.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
@@ -426,7 +429,7 @@ class KeyMacroInfoBar(QFrame):
                     lastTime = recordTime
         except Exception as e:
             logger.exception(e)
-            InfoBar.error("", "脚本文本化失败!", Qt.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
+            InfoBar.error("", "脚本文本化失败!", Qt.Orientation.Horizontal, True, 5000, InfoBarPosition.TOP_LEFT, self.window())
 
         self.editingView.setEditText(contents)
         self.flyoutHandler = Flyout.make(self.editingView, self.editButton, self.window(), FlyoutAnimationType.DROP_DOWN, False)
@@ -436,7 +439,7 @@ class KeyMacroInfoBar(QFrame):
 
     def addWidget(self, widget: QWidget, stretch=0):
         self.widgetLayout.addSpacing(15)
-        self.widgetLayout.addWidget(widget, stretch, Qt.AlignLeft | Qt.AlignVCenter)
+        self.widgetLayout.addWidget(widget, stretch, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
     def addLayout(self, layout, stretch=0):
         self.widgetLayout.addSpacing(15)
@@ -498,7 +501,7 @@ class KeyMacroInfoBar(QFrame):
 
 
 class EditScriptView(FlyoutView):
-    submitSignal = pyqtSignal(str)
+    submitSignal = Signal(str)
 
     def __init__(self, title: str, parent=None):
         super().__init__(title, "", parent=parent)
@@ -513,7 +516,7 @@ class EditScriptView(FlyoutView):
         self.submitButton.clicked.connect(self.__submit)
 
         self.addWidget(self.editText)
-        self.addWidget(self.submitButton, align=Qt.AlignRight)
+        self.addWidget(self.submitButton, align=Qt.AlignmentFlag.AlignRight)
 
     def __submit(self, event):
         self.submitSignal.emit(self.editText.toPlainText())
@@ -523,19 +526,19 @@ class EditScriptView(FlyoutView):
 
 
 class SettingsView(FlyoutView):
-    removeSignal = pyqtSignal()
-    delayChangedSignal = pyqtSignal(int)
-    hotkeyChangedSignal = pyqtSignal(str)
+    removeSignal = Signal()
+    delayChangedSignal = Signal(int)
+    hotkeyChangedSignal = Signal(str)
 
     def __init__(self, title: str, parent=None):
         super().__init__(title, "", parent=parent)
         self.__initUI()
 
     def __initUI(self):
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.removeButton = PushButton(FluentIcon.DELETE, "删除脚本")
-        self.removeButton.setCursor(Qt.PointingHandCursor)
+        self.removeButton.setCursor(Qt.CursorShape.PointingHandCursor)
         self.removeButton.clicked.connect(self.removeSignal)
 
         self.delayEdit = SpinBox()
@@ -597,18 +600,18 @@ class HotKeyEdit(LineEdit):
             return
 
         modifiers = event.modifiers()
-        if key == Qt.Key_Escape:
+        if key == Qt.Key.Key_Escape:
             self.shortcut = ""
             self.clear()
             return
 
         # 如果按下的是Enter/Return，完成录制
-        if key in (Qt.Key_Return, Qt.Key_Enter):
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.clearFocus()
             return
 
         # 忽略单独的修饰键
-        if key in {Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_unknown}:
+        if key in {Qt.Key.Key_Shift, Qt.Key.Key_Control, Qt.Key.Key_Alt, Qt.Key.Key_Meta, Qt.Key.Key_unknown}:
             return
 
         # 添加修饰键
@@ -643,7 +646,7 @@ class BackgroundWidget(QFrame):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setPen(QPen(QColor(200, 200, 200), 0.5, Qt.DotLine))
+        painter.setPen(QPen(QColor(200, 200, 200), 0.5, Qt.PenStyle.DotLine))
 
         # 绘制水平网格线
         for y in range(0, self.height(), 10):  # 20为网格间距
@@ -658,8 +661,8 @@ class SplitLineWidget(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFrameShape(QFrame.VLine)
-        self.setFrameShadow(QFrame.Sunken)
+        self.setFrameShape(QFrame.Shape.VLine)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
         self.setStyleSheet("QFrame{background:#A0A0A0;min-height:5px;border:0px}")
         self.setFixedSize(2, 25)
 
@@ -678,12 +681,15 @@ def showMessageDialog(title: str, content: str, parent: QWidget):
 
 
 if __name__ == "__main__":
-    import sys
     logger.info("----------------------------begin--------------------------------")
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
-    app = QApplication(sys.argv)
-    window = KeyMacroUI()
-    window.show()
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        app.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+        window = KeyMacroUI()
+        window.show()
+        sys.exit(app.exec())
+    except BaseException as e:
+        if isinstance(e, SystemExit) and e.code == 0:
+            logger.info("-----------------------------end---------------------------------")
+        else:
+            logger.exception(f"未知错误: {e}")
