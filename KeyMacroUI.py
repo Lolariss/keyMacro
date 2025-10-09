@@ -573,6 +573,7 @@ class SettingsView(FlyoutView):
         return self.hotkeyEdit.text()
 
     def setHotKey(self, hotkey: str):
+        self.hotkeyEdit.shortcut = hotkey
         self.hotkeyEdit.setText(hotkey)
 
 
@@ -593,7 +594,7 @@ class HotKeyEdit(LineEdit):
         event.ignore()
 
     def keyPressEvent(self, event):
-        key = event.key()
+        key = Qt.Key(event.key())
 
         # 忽略重复按键事件
         if event.isAutoRepeat():
@@ -616,7 +617,11 @@ class HotKeyEdit(LineEdit):
 
         # 添加修饰键
         self.shortcut = QKeySequence(modifiers | key).toString()
-        self.setText(self.shortcut)
+
+    def keyReleaseEvent(self, event):
+        if self.text() != self.shortcut:
+            self.setText(self.shortcut)
+            self.clearFocus()
 
 
 class LabelEdit(LineEdit):
