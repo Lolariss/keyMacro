@@ -16,7 +16,7 @@ from KeyMacro import KeyMacro
 from utils import loadJson, dumpJson, logger
 
 from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TransparentToggleToolButton, CheckBox, LineEdit, MessageBox, FlyoutView, \
-    FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont
+    FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont, FluentTranslator
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
 from qfluentwidgets.components.widgets.info_bar import InfoIconWidget, InfoBar, InfoBarPosition
 
@@ -690,6 +690,8 @@ if __name__ == "__main__":
     try:
         app = QApplication(sys.argv)
         app.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+        translator = FluentTranslator()
+        app.installTranslator(translator)
         window = KeyMacroUI()
         window.show()
         sys.exit(app.exec())
