@@ -36,8 +36,8 @@ class KeyMacroUI(FramelessWindow):
         self.currentNewInfoBar = None
         self.__initUI()
 
-        keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord, trigger_on_release=True)
-        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay, trigger_on_release=True)
+        keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord, suppress=True, trigger_on_release=True)
+        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay, suppress=True, trigger_on_release=True)
 
     def __initUI(self):
         self.setContentsMargins(0, 35, 0, 10)
@@ -304,7 +304,7 @@ class KeyMacroInfoBar(QFrame):
         if len(hotkey) > 0:
             logger.info(f'set {hotkey} {self.macroConfig.get("name", "")} shortcut play')
             try:
-                self.hotkey = keyboard.add_hotkey(hotkey, self.playing, trigger_on_release=True)
+                self.hotkey = keyboard.add_hotkey(hotkey, self.playing, suppress=True, trigger_on_release=True)
                 self.macroConfig['hotkey'] = hotkey
             except Exception as e:
                 logger.exception(e)
