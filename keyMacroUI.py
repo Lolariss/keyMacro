@@ -1,4 +1,3 @@
-import sys
 import time
 import winsound
 import keyboard
@@ -10,13 +9,13 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, Slot
 from PySide6.QtGui import QKeySequence, QPainter, QPen, QColor
-from PySide6.QtWidgets import QVBoxLayout, QFrame, QLabel, QHBoxLayout, QGraphicsOpacityEffect, QWidget, QApplication
+from PySide6.QtWidgets import QVBoxLayout, QFrame, QLabel, QHBoxLayout, QGraphicsOpacityEffect, QWidget
 
-from KeyMacro import KeyMacro
+from keyMacro import KeyMacro
 from utils import loadJson, dumpJson, logger
 
 from qfluentwidgets import MSFluentTitleBar, Icon, FluentIcon, TransparentToolButton, TransparentToggleToolButton, CheckBox, LineEdit, MessageBox, FlyoutView, \
-    FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont, FluentTranslator
+    FlyoutAnimationType, Flyout, ScrollArea, PushButton, SpinBox, TextEdit, setFont
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
 from qfluentwidgets.components.widgets.info_bar import InfoIconWidget, InfoBar, InfoBarPosition
 
@@ -37,8 +36,8 @@ class KeyMacroUI(FramelessWindow):
         self.currentNewInfoBar = None
         self.__initUI()
 
-        keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord, suppress=True, trigger_on_release=True)
-        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay, suppress=True, trigger_on_release=True)
+        keyboard.add_hotkey("ctrl+alt+f9", self.__shortCutRecord, trigger_on_release=True)
+        keyboard.add_hotkey("ctrl+alt+f10", self.__shortCutPlay, trigger_on_release=True)
 
     def __initUI(self):
         self.setContentsMargins(0, 35, 0, 10)
@@ -305,7 +304,7 @@ class KeyMacroInfoBar(QFrame):
         if len(hotkey) > 0:
             logger.info(f'set {hotkey} {self.macroConfig.get("name", "")} shortcut play')
             try:
-                self.hotkey = keyboard.add_hotkey(hotkey, self.playing, suppress=True, trigger_on_release=True)
+                self.hotkey = keyboard.add_hotkey(hotkey, self.playing, trigger_on_release=True)
                 self.macroConfig['hotkey'] = hotkey
             except Exception as e:
                 logger.exception(e)
@@ -683,20 +682,3 @@ def showMessageDialog(title: str, content: str, parent: QWidget):
         if msgBox.exec():
             return True
     return False
-
-
-if __name__ == "__main__":
-    logger.info("----------------------------begin--------------------------------")
-    try:
-        app = QApplication(sys.argv)
-        app.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-        translator = FluentTranslator()
-        app.installTranslator(translator)
-        window = KeyMacroUI()
-        window.show()
-        sys.exit(app.exec())
-    except BaseException as e:
-        if isinstance(e, SystemExit) and e.code == 0:
-            logger.info("-----------------------------end---------------------------------")
-        else:
-            logger.exception(f"未知错误: {e}")
