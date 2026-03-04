@@ -6,7 +6,7 @@
 
 提供了事件监听录制、播放，各录制脚本绑定快捷键，手动编辑事件代码
 
-`
+```
 mouse left: down      鼠标左键按下
 0106                  延迟时间106毫秒
 mouse left: up        鼠标左键释放
@@ -14,7 +14,7 @@ mouse left: up        鼠标左键释放
 space: down           空格键按下
 0050                  延迟时间50毫秒
 space: up             空格释放
-`
+```
 
 使用pyside6 进行了高dpi 缩放兼容，使用 [qfluentwidgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) 进行前端美化
 
